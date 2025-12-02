@@ -1,0 +1,110 @@
+{
+  "name": "ai-coder-extension",
+  "displayName": "AI Coder Extension",
+  "description": "Расширение для разработки расширений генерации кода с использованием LLM",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:aiCoder.openPanel"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiCoder.openPanel",
+        "title": "Open AI Coder Panel"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "aiCoder.openPanel"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "aiCoder.openPanel",
+          "when": "view == aiCoderPanel",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Coder",
+      "properties": {
+        "aiCoder.llm.provider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "anthropic",
+            "ollama",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "OpenAI (GPT-3.5, GPT-4)",
+            "Anthropic Claude",
+            "Ollama (локальные модели)",
+            "Кастомный провайдер"
+          ],
+          "default": "openai",
+          "description": "Провайдер LLM для генерации кода"
+        },
+        "aiCoder.llm.model": {
+          "type": "string",
+          "default": "gpt-4",
+          "description": "Модель LLM (например: gpt-4, gpt-3.5-turbo, claude-3-opus)"
+        },
+        "aiCoder.llm.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Температура генерации (0-2). Более высокие значения делают вывод более креативным"
+        },
+        "aiCoder.llm.maxTokens": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 100,
+          "maximum": 8000,
+          "description": "Максимальное количество токенов в ответе"
+        },
+        "aiCoder.llm.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Базовый URL для кастомного провайдера (опционально)"
+        },
+        "aiCoder.llm.localUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "URL локального сервера для Ollama или других локальных моделей"
+        },
+        "aiCoder.llm.timeout": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 5000,
+          "maximum": 300000,
+          "description": "Таймаут запроса в миллисекундах"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/node-fetch": "^2.6.13",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^4.9.4"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}

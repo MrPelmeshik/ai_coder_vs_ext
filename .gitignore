@@ -1,0 +1,57 @@
+# Compiled output
+out/
+dist/
+*.js.map
+
+# Dependencies
+node_modules/
+
+# VS Code
+.vscode-test/
+*.vsix
+.vscode-test-results/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# IDE
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+
+# Build artifacts
+*.tgz
+*.tar.gz
+
