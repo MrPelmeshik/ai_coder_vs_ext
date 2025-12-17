@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import * as vscode from 'vscode';
 import { VectorStorage, EmbeddingItem } from '../../storage/interfaces/vectorStorage';
 import { FileStatusService, FileStatus } from '../fileStatusService';
 import { LLMService, LLMConfig } from '../llmService';
@@ -33,7 +34,7 @@ export class DirectoryVectorizer {
         }
     ): Promise<{ processed: number; errors: number }> {
         const dirUri = vscode.Uri.file(dirPath);
-        const currentStatus = await this._fileStatusService.getFileStatus(dirUri);
+        const currentStatus = await this.fileStatusService.getFileStatus(dirUri);
         
         // Пропускаем исключенные директории
         if (currentStatus === FileStatus.EXCLUDED) {
@@ -41,10 +42,10 @@ export class DirectoryVectorizer {
         }
 
         // Получаем все существующие записи один раз
-        const existingItems = await this._storage.getByPath(dirPath);
-        const hasOrigin = existingItems.some(i => i.kind === 'origin');
-        const hasVsOrigin = existingItems.some(i => i.kind === 'vs_origin');
-        const hasVsSummarize = existingItems.some(i => i.kind === 'vs_summarize');
+        const existingItems = await this.storage.getByPath(dirPath);
+        const hasOrigin = existingItems.some((i: EmbeddingItem) => i.kind === 'origin');
+        const hasVsOrigin = existingItems.some((i: EmbeddingItem) => i.kind === 'vs_origin');
+        const hasVsSummarize = existingItems.some((i: EmbeddingItem) => i.kind === 'vs_summarize');
 
         const needsOrigin = config.enableOrigin && !hasOrigin;
         const needsVsOrigin = config.enableVsOrigin && !hasVsOrigin;
@@ -52,7 +53,7 @@ export class DirectoryVectorizer {
 
         // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
         if (!needsOrigin && !needsVsOrigin && !needsVsSummarize) {
-            const hasItemsToDelete = existingItems.some(item => 
+            const hasItemsToDelete = existingItems.some((item: EmbeddingItem) => 
                 (!config.enableOrigin && item.kind === 'origin') ||
                 (!config.enableVsOrigin && item.kind === 'vs_origin') ||
                 (!config.enableVsSummarize && item.kind === 'vs_summarize')
@@ -70,12 +71,12 @@ export class DirectoryVectorizer {
                 (!config.enableOrigin && item.kind === 'origin') ||
                 (!config.enableVsOrigin && item.kind === 'vs_origin') ||
                 (!config.enableVsSummarize && item.kind === 'vs_summarize')) {
-                await this._storage.deleteEmbedding(item.id);
+                await this.storage.deleteEmbedding(item.id);
             }
         }
 
         // Помечаем директорию как обрабатывается
-        this._fileStatusService.setFileStatus(dirUri, FileStatus.PROCESSING);
+        this.fileStatusService.setFileStatus(dirUri, FileStatus.PROCESSING);
 
         try {
             let processedCount = 0;
@@ -114,10 +115,10 @@ export class DirectoryVectorizer {
                 }
             }
             
-            this._fileStatusService.clearProcessingStatus(dirUri);
+            this.fileStatusService.clearProcessingStatus(dirUri);
             return { processed: processedCount, errors: 0 };
         } catch (error) {
-            this._fileStatusService.clearProcessingStatus(dirUri);
+            this.fileStatusService.clearProcessingStatus(dirUri);
             Logger.error(`Ошибка векторизации директории ${dirPath}`, error as Error);
             throw new VectorizationError(
                 `Не удалось векторизовать директорию ${dirPath}`,
@@ -136,7 +137,7 @@ export class DirectoryVectorizer {
         const description = `Директория содержит ${fileNames.length} файлов: ${fileNames.join(', ')}`;
         
         const llmConfig = await this._getLLMConfig();
-        const vector = await this._embeddingProvider.getEmbedding(description, llmConfig);
+        const vector = await this.embeddingProvider.getEmbedding(description, llmConfig);
         
         const dirItem: EmbeddingItem = {
             id: generateGuid(),
@@ -149,7 +150,7 @@ export class DirectoryVectorizer {
             vector: vector
         };
 
-        await this._storage.addEmbedding(dirItem);
+        await this.storage.addEmbedding(dirItem);
     }
 
     /**
@@ -210,7 +211,7 @@ export class DirectoryVectorizer {
                 vector: sumVector
             };
 
-            await this._storage.addEmbedding(item);
+            await this.storage.addEmbedding(item);
             return true;
         } else if (nestedItems.length > 0) {
             Logger.warn(
@@ -274,7 +275,7 @@ export class DirectoryVectorizer {
                         }
 
                         // Получаем все векторы для этого элемента из БД
-                        const items = await this._storage.getByPath(fullPath);
+                        const items = await this.storage.getByPath(fullPath);
                         if (items.length > 0) {
                             nestedItems.push(...items);
                         }
@@ -301,7 +302,7 @@ export class DirectoryVectorizer {
      * Получение конфигурации LLM
      */
     private async _getLLMConfig(): Promise<LLMConfig> {
-        return await this._llmService.getConfig();
+        return await this.llmService.getConfig();
     }
 }
 

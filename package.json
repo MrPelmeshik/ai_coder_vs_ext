@@ -80,14 +80,12 @@
           "enum": [
             "openai",
             "anthropic",
-            "ollama",
-            "custom"
+            "ollama"
           ],
           "enumDescriptions": [
-            "OpenAI (GPT-3.5, GPT-4)",
+            "OpenAI (GPT-3.5, GPT-4, локальные модели через LM Studio и т.д.)",
             "Anthropic Claude",
-            "Ollama (локальные модели)",
-            "Кастомный провайдер"
+            "Ollama (локальные модели)"
           ],
           "default": "openai",
           "description": "Провайдер LLM для генерации кода"
