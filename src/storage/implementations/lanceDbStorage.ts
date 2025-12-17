@@ -158,16 +158,25 @@ export class LanceDbStorage implements VectorStorage {
             // Проверяем количество записей в таблице
             const count = await this.table.countRows();
             
-            // Создаем индекс если есть хотя бы 10 записей
-            // Обновляем индекс каждые 50 новых записей или при первом создании
-            if (count >= 10 && (count - this.lastIndexCount >= 50 || this.lastIndexCount === 0)) {
+            // Минимальное количество записей для создания индекса
+            const MIN_RECORDS_FOR_INDEX = 100;
+            
+            // Создаем индекс если есть достаточно записей
+            // Обновляем индекс каждые 100 новых записей или при первом создании
+            if (count >= MIN_RECORDS_FOR_INDEX && (count - this.lastIndexCount >= 100 || this.lastIndexCount === 0)) {
                 this.indexCreationInProgress = true;
                 
                 try {
                     const { Index } = await import('@lancedb/lancedb');
                     
                     // Вычисляем оптимальное количество разделов
-                    const numPartitions = Math.min(128, Math.max(16, Math.floor(Math.sqrt(count))));
+                    // numPartitions не должен превышать количество векторов
+                    // Используем формулу: min(256, max(16, sqrt(count)), но не больше count)
+                    const calculatedPartitions = Math.min(256, Math.max(16, Math.floor(Math.sqrt(count))));
+                    const numPartitions = Math.min(calculatedPartitions, count);
+                    
+                    // sampleRate не должен превышать количество векторов
+                    const sampleRate = Math.min(256, count);
                     
                     // Создаем IVF-PQ индекс для векторной колонки
                     await this.table.createIndex('vector', {
@@ -176,7 +185,7 @@ export class LanceDbStorage implements VectorStorage {
                             numSubVectors: 16,
                             distanceType: 'cosine', // Используем cosine для эмбеддингов
                             maxIterations: 50,
-                            sampleRate: 256
+                            sampleRate: sampleRate
                         }),
                         replace: true // Заменяем существующий индекс если есть
                     });
