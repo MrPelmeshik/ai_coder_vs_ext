@@ -31,6 +31,11 @@
     const toggleApiKeyBtn = document.getElementById('toggle-api-key');
     const modelInput = document.getElementById('model-input');
     const embedderModelInput = document.getElementById('embedder-model-input');
+    const summarizePromptInput = document.getElementById('summarize-prompt-input');
+    const enableOriginCheckbox = document.getElementById('enable-origin-checkbox');
+    const enableSummarizeCheckbox = document.getElementById('enable-summarize-checkbox');
+    const enableVsOriginCheckbox = document.getElementById('enable-vs-origin-checkbox');
+    const enableVsSummarizeCheckbox = document.getElementById('enable-vs-summarize-checkbox');
     const temperatureInput = document.getElementById('temperature-input');
     const temperatureValue = document.getElementById('temperature-value');
     const maxTokensInput = document.getElementById('max-tokens-input');
@@ -340,6 +345,11 @@
             apiKey: apiKeyInput.value.trim(),
             model: modelInput.value.trim(),
             embedderModel: embedderModelInput.value.trim(),
+            summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
+            enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
+            enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : true,
+            enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : false,
+            enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : false,
             temperature: parseFloat(temperatureInput.value),
             maxTokens: parseInt(maxTokensInput.value),
             baseUrl: baseUrlInput.value.trim(),
@@ -383,6 +393,21 @@
             apiKeyInput.value = '';
             modelInput.value = 'gpt-4';
             embedderModelInput.value = '';
+            if (summarizePromptInput) {
+                summarizePromptInput.value = '';
+            }
+            if (enableOriginCheckbox) {
+                enableOriginCheckbox.checked = true;
+            }
+            if (enableSummarizeCheckbox) {
+                enableSummarizeCheckbox.checked = true;
+            }
+            if (enableVsOriginCheckbox) {
+                enableVsOriginCheckbox.checked = false;
+            }
+            if (enableVsSummarizeCheckbox) {
+                enableVsSummarizeCheckbox.checked = false;
+            }
             temperatureInput.value = '0.7';
             temperatureValue.textContent = '0.7';
             maxTokensInput.value = '2000';
@@ -396,6 +421,11 @@
                 apiKey: '',
                 model: 'gpt-4',
                 embedderModel: '',
+                summarizePrompt: '',
+                enableOrigin: true,
+                enableSummarize: true,
+                enableVsOrigin: false,
+                enableVsSummarize: false,
                 temperature: 0.7,
                 maxTokens: 2000,
                 baseUrl: '',
@@ -593,6 +623,21 @@
         }
         modelInput.value = config.model || 'gpt-4';
         embedderModelInput.value = config.embedderModel || '';
+        if (summarizePromptInput) {
+            summarizePromptInput.value = config.summarizePrompt || '';
+        }
+        if (enableOriginCheckbox) {
+            enableOriginCheckbox.checked = config.enableOrigin !== undefined ? config.enableOrigin : true;
+        }
+        if (enableSummarizeCheckbox) {
+            enableSummarizeCheckbox.checked = config.enableSummarize !== undefined ? config.enableSummarize : true;
+        }
+        if (enableVsOriginCheckbox) {
+            enableVsOriginCheckbox.checked = config.enableVsOrigin !== undefined ? config.enableVsOrigin : false;
+        }
+        if (enableVsSummarizeCheckbox) {
+            enableVsSummarizeCheckbox.checked = config.enableVsSummarize !== undefined ? config.enableVsSummarize : false;
+        }
         temperatureInput.value = config.temperature || 0.7;
         temperatureValue.textContent = config.temperature || 0.7;
         maxTokensInput.value = config.maxTokens || 2000;
@@ -722,6 +767,9 @@
             const similarityPercent = (result.similarity * 100).toFixed(1);
             const typeLabel = getTypeLabel(result.type);
             const kindLabel = getKindLabel(result.kind);
+            const rawContent = result.raw ? (typeof result.raw === 'string' ? result.raw : JSON.stringify(result.raw, null, 2)) : '';
+            const hasRaw = rawContent && rawContent.trim().length > 0;
+            const rawId = `raw-content-${index}`;
             html += `
                 <li class="search-result-item" data-path="${escapeHtml(result.path)}" data-type="${result.type}">
                     <div class="search-result-header">
@@ -732,6 +780,17 @@
                     <div class="search-result-meta">
                         <span class="search-result-kind-badge" title="${kindLabel}">${kindLabel}</span>
                     </div>
+                    ${hasRaw ? `
+                    <div class="search-result-raw-section">
+                        <button class="search-result-raw-toggle" data-target="${rawId}" type="button">
+                            <span class="raw-toggle-icon">▼</span>
+                            <span class="raw-toggle-text">Показать содержимое</span>
+                        </button>
+                        <div class="search-result-raw-content" id="${rawId}" style="display: none;">
+                            <pre class="raw-content-pre">${escapeHtml(rawContent)}</pre>
+                        </div>
+                    </div>
+                    ` : ''}
                 </li>
             `;
         });
@@ -743,7 +802,13 @@
         // Добавляем обработчики клика для открытия файлов
         const resultItems = searchResultsList.querySelectorAll('.search-result-item');
         resultItems.forEach(item => {
-            item.addEventListener('click', () => {
+            // Обработчик клика на сам элемент (для открытия файла)
+            item.addEventListener('click', (e) => {
+                // Не открываем файл, если клик был на кнопке раскрытия raw или внутри блока raw
+                if (e.target.closest('.search-result-raw-toggle') || e.target.closest('.search-result-raw-content')) {
+                    return;
+                }
+                
                 const filePath = item.getAttribute('data-path');
                 const fileType = item.getAttribute('data-type');
                 
@@ -753,6 +818,32 @@
                         command: 'openFile',
                         path: filePath
                     });
+                }
+            });
+        });
+        
+        // Добавляем обработчики для кнопок раскрытия raw
+        const rawToggles = searchResultsList.querySelectorAll('.search-result-raw-toggle');
+        rawToggles.forEach(toggle => {
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation(); // Предотвращаем открытие файла
+                const targetId = toggle.getAttribute('data-target');
+                const rawContent = document.getElementById(targetId);
+                const toggleIcon = toggle.querySelector('.raw-toggle-icon');
+                const toggleText = toggle.querySelector('.raw-toggle-text');
+                
+                if (rawContent) {
+                    if (rawContent.style.display === 'none') {
+                        rawContent.style.display = 'block';
+                        toggleIcon.textContent = '▲';
+                        toggleText.textContent = 'Скрыть содержимое';
+                        toggle.classList.add('expanded');
+                    } else {
+                        rawContent.style.display = 'none';
+                        toggleIcon.textContent = '▼';
+                        toggleText.textContent = 'Показать содержимое';
+                        toggle.classList.remove('expanded');
+                    }
                 }
             });
         });

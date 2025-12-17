@@ -833,6 +833,69 @@ h3 {
     text-transform: uppercase;
 }
 
+/* Стили для раскрывающегося блока raw */
+.search-result-raw-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+.search-result-raw-toggle {
+    background: transparent;
+    border: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-foreground);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    font-family: var(--vscode-font-family);
+}
+
+.search-result-raw-toggle:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.search-result-raw-toggle.expanded {
+    background-color: var(--vscode-list-activeSelectionBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.raw-toggle-icon {
+    font-size: 10px;
+    transition: transform 0.2s ease;
+}
+
+.raw-toggle-text {
+    font-weight: 500;
+}
+
+.search-result-raw-content {
+    margin-top: 8px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 400px;
+    overflow: auto;
+    display: none; /* По умолчанию скрыто */
+}
+
+.raw-content-pre {
+    margin: 0;
+    padding: 0;
+    font-family: var(--vscode-editor-font-family);
+    font-size: calc(var(--vscode-editor-font-size) * 0.9);
+    color: var(--vscode-textPreformat-foreground);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
 /* Стили для статуса хранилища */
 .storage-status-group {
     background: linear-gradient(135deg, var(--vscode-editor-background) 0%, var(--vscode-list-hoverBackground) 100%);

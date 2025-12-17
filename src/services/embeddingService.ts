@@ -152,6 +152,7 @@ export class EmbeddingService {
 
     /**
      * Обработка отдельного файла
+     * Создает два вектора: по оригинальному тексту и по суммаризации
      */
     private async _processFileItem(
         filePath: string,
@@ -168,8 +169,12 @@ export class EmbeddingService {
             return;
         }
 
-        // Проверяем, обработан ли уже файл
-        if (await this._storage.exists(filePath, 'origin')) {
+        // Проверяем, обработан ли уже файл (проверяем оба вида векторов)
+        const hasOrigin = await this._storage.exists(filePath, 'origin');
+        const hasSummarize = await this._storage.exists(filePath, 'summarize');
+        
+        // Если оба вектора уже существуют, пропускаем
+        if (hasOrigin && hasSummarize) {
             return;
         }
 
@@ -193,27 +198,107 @@ export class EmbeddingService {
 
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
-            const vector = await this._getEmbedding(content);
-            
-            const item: EmbeddingItem = {
-                id: this._generateGuid(),
-                type: 'file',
-                parent: parentId,
-                childs: [],
-                path: filePath,
-                kind: 'origin',
-                raw: content,
-                vector: vector
-            };
+            let processedCount = 0;
 
-            await this._storage.addEmbedding(item);
+            // Получаем настройки включения/отключения типов векторов
+            const config = vscode.workspace.getConfiguration('aiCoder');
+            const enableOrigin = config.get<boolean>('vectorization.enableOrigin', true);
+            const enableSummarize = config.get<boolean>('vectorization.enableSummarize', true);
+            const enableVsOrigin = config.get<boolean>('vectorization.enableVsOrigin', false);
+            const enableVsSummarize = config.get<boolean>('vectorization.enableVsSummarize', false);
+
+            // 1. Создаем вектор по оригинальному тексту
+            if (enableOrigin && !hasOrigin) {
+                const originVector = await this._getEmbedding(content);
+                
+                const originItem: EmbeddingItem = {
+                    id: this._generateGuid(),
+                    type: 'file',
+                    parent: parentId,
+                    childs: [],
+                    path: filePath,
+                    kind: 'origin',
+                    raw: content,
+                    vector: originVector
+                };
+
+                await this._storage.addEmbedding(originItem);
+                processedCount++;
+            }
+
+            // 2. Создаем вектор по суммаризации текста
+            if (enableSummarize && !hasSummarize) {
+                const summary = await this._summarizeText(content);
+                const summarizeVector = await this._getEmbedding(summary);
+                
+                const summarizeItem: EmbeddingItem = {
+                    id: this._generateGuid(),
+                    type: 'file',
+                    parent: parentId,
+                    childs: [],
+                    path: filePath,
+                    kind: 'summarize',
+                    raw: summary,
+                    vector: summarizeVector
+                };
+
+                await this._storage.addEmbedding(summarizeItem);
+                processedCount++;
+            }
+
+            // 3. Создаем вектор как сумму векторов по оригинальному тексту вложений (vs_origin)
+            if (enableVsOrigin) {
+                const hasVsOrigin = await this._storage.exists(filePath, 'vs_origin');
+                if (!hasVsOrigin) {
+                    // TODO: Реализовать логику суммирования векторов вложений
+                    // Пока пропускаем, так как это требует дополнительной логики
+                    console.log(`vs_origin для ${filePath} пока не реализован`);
+                }
+            }
+
+            // 4. Создаем вектор как сумму векторов по суммаризации вложений (vs_summarize)
+            if (enableVsSummarize) {
+                const hasVsSummarize = await this._storage.exists(filePath, 'vs_summarize');
+                if (!hasVsSummarize) {
+                    // TODO: Реализовать логику суммирования векторов вложений
+                    // Пока пропускаем, так как это требует дополнительной логики
+                    console.log(`vs_summarize для ${filePath} пока не реализован`);
+                }
+            }
             
             // Убираем статус PROCESSING
             this._fileStatusService.clearProcessingStatus(fileUri);
-            onProgress(1, 0);
+            onProgress(processedCount, 0);
         } catch (error) {
             this._fileStatusService.clearProcessingStatus(fileUri);
             throw error;
+        }
+    }
+
+    /**
+     * Суммаризация текста через LLM
+     */
+    private async _summarizeText(text: string): Promise<string> {
+        // Ограничиваем длину текста для суммаризации (чтобы не превышать лимиты токенов)
+        const maxLength = 10000; // Примерно 2500-3000 токенов
+        const textToSummarize = text.length > maxLength 
+            ? text.substring(0, maxLength) + '\n\n[...текст обрезан для суммаризации...]'
+            : text;
+
+        // Получаем промпт для суммаризации из настроек
+        const config = vscode.workspace.getConfiguration('aiCoder');
+        const summarizePromptTemplate = config.get<string>('vectorization.summarizePrompt', 
+            'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.');
+
+        const prompt = `${summarizePromptTemplate}\n\n${textToSummarize}`;
+
+        try {
+            const summary = await this._llmService.generateCode(prompt);
+            return summary.trim();
+        } catch (error) {
+            // Если суммаризация не удалась, используем оригинальный текст
+            console.warn(`Не удалось создать суммаризацию, используется оригинальный текст:`, error);
+            return textToSummarize;
         }
     }
 
@@ -290,8 +375,9 @@ export class EmbeddingService {
 
     /**
      * Векторизация конкретного файла
+     * Создает оба вектора (origin и summarize), если kind не указан
      */
-    async vectorizeFile(fileUri: vscode.Uri, kind: EmbeddingKind = 'origin'): Promise<string> {
+    async vectorizeFile(fileUri: vscode.Uri, kind?: EmbeddingKind): Promise<string> {
         const filePath = fileUri.fsPath;
         const currentStatus = await this._fileStatusService.getFileStatus(fileUri);
         
@@ -300,49 +386,130 @@ export class EmbeddingService {
             throw new Error(`Файл ${filePath} исключен из обработки`);
         }
 
-        // Проверяем, не обработан ли уже файл
-        if (await this._storage.exists(filePath, kind)) {
-            // Файл уже обработан и есть в БД
-            throw new Error(`Файл ${filePath} уже обработан (kind: ${kind})`);
-        }
-
-        // Удаляем старые записи из БД перед обработкой
-        const existingItems = await this._storage.getByPath(filePath);
-        for (const item of existingItems) {
-            await this._storage.deleteEmbedding(item.id);
-        }
-
-        // Помечаем файл как обрабатывается (временно)
-        this._fileStatusService.setFileStatus(fileUri, FileStatus.PROCESSING);
-
-        try {
-            // Читаем содержимое файла
+        // Если kind не указан, создаем оба вектора
+        if (!kind) {
             const content = fs.readFileSync(filePath, 'utf-8');
             
-            // Получаем эмбеддинг
-            const vector = await this._getEmbedding(content);
+            // Проверяем, какие векторы уже существуют
+            const hasOrigin = await this._storage.exists(filePath, 'origin');
+            const hasSummarize = await this._storage.exists(filePath, 'summarize');
             
-            // Создаем элемент
-            const item: EmbeddingItem = {
-                id: this._generateGuid(),
-                type: 'file',
-                parent: null,
-                childs: [],
-                path: filePath,
-                kind: kind,
-                raw: content,
-                vector: vector
-            };
+            // Удаляем старые записи из БД перед обработкой
+            const existingItems = await this._storage.getByPath(filePath);
+            for (const item of existingItems) {
+                await this._storage.deleteEmbedding(item.id);
+            }
 
-            await this._storage.addEmbedding(item);
-            
-            // Убираем статус PROCESSING - теперь статус будет определяться автоматически из БД
-            this._fileStatusService.clearProcessingStatus(fileUri);
-            return item.id;
-        } catch (error) {
-            // При ошибке убираем статус PROCESSING
-            this._fileStatusService.clearProcessingStatus(fileUri);
-            throw error;
+            // Помечаем файл как обрабатывается (временно)
+            this._fileStatusService.setFileStatus(fileUri, FileStatus.PROCESSING);
+
+            try {
+                let lastItemId: string | null = null;
+
+                // Получаем настройки включения/отключения типов векторов
+                const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+                const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin', true);
+                const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize', true);
+                const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin', false);
+                const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize', false);
+
+                // Создаем вектор по оригинальному тексту
+                if (enableOrigin && !hasOrigin) {
+                    const originVector = await this._getEmbedding(content);
+                    
+                    const originItem: EmbeddingItem = {
+                        id: this._generateGuid(),
+                        type: 'file',
+                        parent: null,
+                        childs: [],
+                        path: filePath,
+                        kind: 'origin',
+                        raw: content,
+                        vector: originVector
+                    };
+
+                    lastItemId = await this._storage.addEmbedding(originItem);
+                }
+
+                // Создаем вектор по суммаризации
+                if (enableSummarize && !hasSummarize) {
+                    const summary = await this._summarizeText(content);
+                    const summarizeVector = await this._getEmbedding(summary);
+                    
+                    const summarizeItem: EmbeddingItem = {
+                        id: this._generateGuid(),
+                        type: 'file',
+                        parent: null,
+                        childs: [],
+                        path: filePath,
+                        kind: 'summarize',
+                        raw: summary,
+                        vector: summarizeVector
+                    };
+
+                    lastItemId = await this._storage.addEmbedding(summarizeItem);
+                }
+
+                // TODO: Реализовать vs_origin и vs_summarize
+                if (enableVsOrigin || enableVsSummarize) {
+                    console.log(`vs_origin и vs_summarize для ${filePath} пока не реализованы`);
+                }
+
+                // Убираем статус PROCESSING
+                this._fileStatusService.clearProcessingStatus(fileUri);
+                return lastItemId || '';
+            } catch (error) {
+                this._fileStatusService.clearProcessingStatus(fileUri);
+                throw error;
+            }
+        } else {
+            // Если kind указан, создаем только один вектор указанного типа
+            if (await this._storage.exists(filePath, kind)) {
+                throw new Error(`Файл ${filePath} уже обработан (kind: ${kind})`);
+            }
+
+            // Удаляем старые записи указанного kind из БД перед обработкой
+            const existingItems = await this._storage.getByPath(filePath);
+            for (const item of existingItems) {
+                if (item.kind === kind) {
+                    await this._storage.deleteEmbedding(item.id);
+                }
+            }
+
+            // Помечаем файл как обрабатывается (временно)
+            this._fileStatusService.setFileStatus(fileUri, FileStatus.PROCESSING);
+
+            try {
+                const content = fs.readFileSync(filePath, 'utf-8');
+                let textToEmbed = content;
+                
+                // Если нужна суммаризация, создаем её
+                if (kind === 'summarize') {
+                    textToEmbed = await this._summarizeText(content);
+                }
+                
+                const vector = await this._getEmbedding(textToEmbed);
+                
+                const item: EmbeddingItem = {
+                    id: this._generateGuid(),
+                    type: 'file',
+                    parent: null,
+                    childs: [],
+                    path: filePath,
+                    kind: kind,
+                    raw: textToEmbed,
+                    vector: vector
+                };
+
+                const itemId = await this._storage.addEmbedding(item);
+                
+                // Убираем статус PROCESSING
+                this._fileStatusService.clearProcessingStatus(fileUri);
+                return itemId;
+            } catch (error) {
+                this._fileStatusService.clearProcessingStatus(fileUri);
+                throw error;
+            }
         }
     }
 
@@ -422,7 +589,8 @@ export class EmbeddingService {
             path: r.item.path,
             type: r.item.type,
             similarity: r.similarity,
-            kind: r.item.kind
+            kind: r.item.kind,
+            raw: r.item.raw
         }));
     }
 

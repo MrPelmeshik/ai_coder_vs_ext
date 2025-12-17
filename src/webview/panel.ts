@@ -118,12 +118,24 @@ export class AICoderPanel {
      */
     private async _sendConfigToWebview() {
         const config = await this._llmService.getConfig();
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const summarizePrompt = vscodeConfig.get<string>('vectorization.summarizePrompt', '');
+        const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin', true);
+        const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize', true);
+        const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin', false);
+        const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize', false);
+        
         // Не отправляем API ключ в webview по соображениям безопасности
         const safeConfig = {
             ...config,
             apiKey: config.apiKey ? '***' : '',
             hasApiKey: await this._llmService.hasApiKey(),
-            localUrl: config.localUrl || 'http://localhost:11434'
+            localUrl: config.localUrl || 'http://localhost:11434',
+            summarizePrompt: summarizePrompt,
+            enableOrigin: enableOrigin,
+            enableSummarize: enableSummarize,
+            enableVsOrigin: enableVsOrigin,
+            enableVsSummarize: enableVsSummarize
         };
         
         this._panel.webview.postMessage({
@@ -138,6 +150,28 @@ export class AICoderPanel {
     private async _handleUpdateConfig(config: any) {
         try {
             await this._llmService.updateConfig(config);
+            
+            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+            
+            // Сохраняем промпт суммаризации отдельно
+            if (config.summarizePrompt !== undefined) {
+                await vscodeConfig.update('vectorization.summarizePrompt', config.summarizePrompt, vscode.ConfigurationTarget.Global);
+            }
+            
+            // Сохраняем настройки включения/отключения типов векторов
+            if (config.enableOrigin !== undefined) {
+                await vscodeConfig.update('vectorization.enableOrigin', config.enableOrigin, vscode.ConfigurationTarget.Global);
+            }
+            if (config.enableSummarize !== undefined) {
+                await vscodeConfig.update('vectorization.enableSummarize', config.enableSummarize, vscode.ConfigurationTarget.Global);
+            }
+            if (config.enableVsOrigin !== undefined) {
+                await vscodeConfig.update('vectorization.enableVsOrigin', config.enableVsOrigin, vscode.ConfigurationTarget.Global);
+            }
+            if (config.enableVsSummarize !== undefined) {
+                await vscodeConfig.update('vectorization.enableVsSummarize', config.enableVsSummarize, vscode.ConfigurationTarget.Global);
+            }
+            
             await this._sendConfigToWebview();
             vscode.window.showInformationMessage('Настройки успешно сохранены');
         } catch (error) {
@@ -801,6 +835,44 @@ export class AICoderPanel {
                                     placeholder="text-embedding-ada-002, nomic-embed-text, all-minilm..."
                                 />
                                 <small class="setting-hint">Модель для создания векторных представлений текста</small>
+                            </div>
+
+                            <div class="setting-group">
+                                <label for="summarize-prompt-input">Промпт для суммаризации:</label>
+                                <textarea 
+                                    id="summarize-prompt-input" 
+                                    class="setting-input"
+                                    rows="4"
+                                    placeholder="Промпт для суммаризации файлов при векторизации"
+                                ></textarea>
+                                <small class="setting-hint">Промпт используется для создания краткого описания содержимого файлов при векторизации</small>
+                            </div>
+
+                            <div class="setting-group">
+                                <label>Типы векторов для создания:</label>
+                                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" id="enable-origin-checkbox" checked>
+                                        <span>Оригинальный текст</span>
+                                        <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(origin)</small>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" id="enable-summarize-checkbox" checked>
+                                        <span>Суммаризация по оригинальному тексту</span>
+                                        <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(summarize)</small>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" id="enable-vs-origin-checkbox">
+                                        <span>Сумма векторов по оригинальному тексту вложений</span>
+                                        <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(vs_origin)</small>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" id="enable-vs-summarize-checkbox">
+                                        <span>Сумма векторов по суммаризации вложений</span>
+                                        <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(vs_summarize)</small>
+                                    </label>
+                                </div>
+                                <small class="setting-hint">Выберите типы векторов, которые будут создаваться при векторизации файлов</small>
                             </div>
 
                             <div class="button-section">

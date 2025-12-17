@@ -150,6 +150,31 @@
           "type": "string",
           "default": "",
           "description": "Системный промпт для LLM. Определяет роль и поведение модели."
+        },
+        "aiCoder.vectorization.summarizePrompt": {
+          "type": "string",
+          "default": "Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.",
+          "description": "Промпт для суммаризации файлов при векторизации. Используется для создания краткого описания содержимого файлов."
+        },
+        "aiCoder.vectorization.enableOrigin": {
+          "type": "boolean",
+          "default": true,
+          "description": "Создавать векторы по оригинальному тексту файлов"
+        },
+        "aiCoder.vectorization.enableSummarize": {
+          "type": "boolean",
+          "default": true,
+          "description": "Создавать векторы по суммаризации файлов"
+        },
+        "aiCoder.vectorization.enableVsOrigin": {
+          "type": "boolean",
+          "default": false,
+          "description": "Создавать векторы как сумму векторов по оригинальному тексту вложений"
+        },
+        "aiCoder.vectorization.enableVsSummarize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Создавать векторы как сумму векторов по суммаризации вложений"
         }
       }
     }
