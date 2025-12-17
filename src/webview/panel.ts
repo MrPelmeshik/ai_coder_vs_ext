@@ -452,7 +452,6 @@ export class AICoderPanel {
                         </div>
                         <div class="button-section">
                             <button id="generate-btn" class="generate-button">Сгенерировать код</button>
-                            <button id="vectorize-btn" class="secondary-button">Векторизовать все файлы</button>
                         </div>
                         <div class="result-section" id="result-section" style="display: none;">
                             <h2>Результат:</h2>
@@ -483,157 +482,178 @@ export class AICoderPanel {
 
                     <!-- Вкладка настроек -->
                     <div class="tab-content" id="tab-settings">
-                        <div class="settings-section">
-                            <h2>Настройки LLM</h2>
-                            
-                            <div class="setting-group">
-                                <label for="provider-select">Провайдер:</label>
-                                <select id="provider-select" class="setting-input">
-                                    <option value="openai">OpenAI</option>
-                                    <option value="anthropic">Anthropic Claude</option>
-                                    <option value="ollama">Ollama</option>
-                                    <option value="custom">Кастомный</option>
-                                </select>
-                            </div>
+                        <div class="settings-tabs">
+                            <button class="settings-tab-button active" data-settings-tab="llm">LLM</button>
+                            <button class="settings-tab-button" data-settings-tab="vectorization">Векторизация</button>
+                        </div>
 
-                            <div class="setting-group">
-                                <label for="api-key-input">API Ключ:</label>
-                                <div class="api-key-wrapper">
-                                    <input 
-                                        type="password" 
-                                        id="api-key-input" 
-                                        class="setting-input"
-                                        placeholder="Введите ваш API ключ"
-                                    />
-                                    <button id="toggle-api-key" class="toggle-button" title="Показать/скрыть">👁</button>
-                                </div>
-                                <small class="setting-hint">API ключ хранится в безопасном хранилище VS Code</small>
-                            </div>
-
-                            <div class="setting-group">
-                                <label for="model-input">Модель LLM:</label>
-                                <input 
-                                    type="text" 
-                                    id="model-input" 
-                                    class="setting-input"
-                                    placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
-                                />
-                                <small class="setting-hint">Название модели вашего провайдера</small>
-                            </div>
-
-                            <div class="setting-group">
-                                <label for="embedder-model-input">Модель эмбеддинга:</label>
-                                <input 
-                                    type="text" 
-                                    id="embedder-model-input" 
-                                    class="setting-input"
-                                    placeholder="text-embedding-ada-002, nomic-embed-text, all-minilm..."
-                                />
-                                <small class="setting-hint">Модель для создания векторных представлений текста (опционально)</small>
-                            </div>
-
-                            <div class="setting-group">
-                                <label for="temperature-input">Температура: <span id="temperature-value">0.7</span></label>
-                                <input 
-                                    type="range" 
-                                    id="temperature-input" 
-                                    class="setting-slider"
-                                    min="0" 
-                                    max="2" 
-                                    step="0.1" 
-                                    value="0.7"
-                                />
-                                <small class="setting-hint">Контролирует креативность ответов (0 = детерминированный, 2 = очень креативный)</small>
-                            </div>
-
-                            <div class="setting-group">
-                                <label for="max-tokens-input">Максимум токенов:</label>
-                                <input 
-                                    type="number" 
-                                    id="max-tokens-input" 
-                                    class="setting-input"
-                                    min="100" 
-                                    max="8000" 
-                                    value="2000"
-                                />
-                                <small class="setting-hint">Максимальная длина ответа в токенах</small>
-                            </div>
-
-                            <div class="setting-group" id="local-url-group" style="display: none;">
-                                <label for="local-url-input">URL локального сервера:</label>
-                                <input 
-                                    type="text" 
-                                    id="local-url-input" 
-                                    class="setting-input"
-                                    placeholder="http://localhost:11434"
-                                />
-                                <small class="setting-hint">URL для Ollama (по умолчанию: http://localhost:11434)</small>
-                            </div>
-
-                            <div class="setting-group" id="base-url-group" style="display: none;">
-                                <label for="base-url-input">Базовый URL:</label>
-                                <input 
-                                    type="text" 
-                                    id="base-url-input" 
-                                    class="setting-input"
-                                    placeholder="http://localhost:1234/v1"
-                                />
-                                <small class="setting-hint">URL для кастомного провайдера или LM Studio (например: http://localhost:1234/v1)</small>
-                            </div>
-
-                            <div class="setting-group" id="api-type-group" style="display: none;">
-                                <label for="api-type-select">Тип API:</label>
-                                <select id="api-type-select" class="setting-input">
-                                    <option value="openai">OpenAI-совместимый</option>
-                                    <option value="ollama">Ollama-совместимый</option>
-                                </select>
-                                <small class="setting-hint">Тип API для кастомного провайдера (OpenAI для LM Studio/vLLM, Ollama для Ollama-совместимых серверов)</small>
-                            </div>
-
-                            <div class="setting-group">
-                                <label for="timeout-input">Таймаут (мс):</label>
-                                <input 
-                                    type="number" 
-                                    id="timeout-input" 
-                                    class="setting-input"
-                                    min="5000" 
-                                    max="300000" 
-                                    value="30000"
-                                />
-                                <small class="setting-hint">Максимальное время ожидания ответа</small>
-                            </div>
-
-                            <div class="setting-group" id="local-check-group" style="display: none;">
-                                <button id="check-local-btn" class="secondary-button">Проверить подключение</button>
-                                <div id="local-status" class="local-status"></div>
-                            </div>
-
-                            <div class="button-section">
-                                <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
-                                <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
-                            </div>
-
-                            <div class="settings-section" style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--vscode-panel-border);">
-                                <h2>Хранилище эмбеддингов</h2>
+                        <!-- Подвкладка LLM -->
+                        <div class="settings-tab-content active" id="settings-tab-llm">
+                            <div class="settings-section">
+                                <h2>Настройки LLM</h2>
+                                
                                 <div class="setting-group">
-                                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                                        <label style="margin: 0; font-weight: 500;">Количество записей:</label>
-                                        <span id="storage-count" style="color: var(--vscode-textLink-foreground); font-weight: 600;">—</span>
-                                        <button id="refresh-storage-count-btn" class="toggle-button" style="padding: 5px 10px; font-size: 12px;" title="Обновить">
-                                            🔄
+                                    <label for="provider-select">Провайдер:</label>
+                                    <select id="provider-select" class="setting-input">
+                                        <option value="openai">OpenAI</option>
+                                        <option value="anthropic">Anthropic Claude</option>
+                                        <option value="ollama">Ollama</option>
+                                        <option value="custom">Кастомный</option>
+                                    </select>
+                                </div>
+
+                                <div class="setting-group">
+                                    <label for="api-key-input">API Ключ:</label>
+                                    <div class="api-key-wrapper">
+                                        <input 
+                                            type="password" 
+                                            id="api-key-input" 
+                                            class="setting-input"
+                                            placeholder="Введите ваш API ключ"
+                                        />
+                                        <button id="toggle-api-key" class="toggle-button" title="Показать/скрыть">👁</button>
+                                    </div>
+                                    <small class="setting-hint">API ключ хранится в безопасном хранилище VS Code</small>
+                                </div>
+
+                                <div class="setting-group">
+                                    <label for="model-input">Модель LLM:</label>
+                                    <input 
+                                        type="text" 
+                                        id="model-input" 
+                                        class="setting-input"
+                                        placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
+                                    />
+                                    <small class="setting-hint">Название модели вашего провайдера</small>
+                                </div>
+
+                                <div class="setting-group">
+                                    <label for="temperature-input">Температура: <span id="temperature-value">0.7</span></label>
+                                    <input 
+                                        type="range" 
+                                        id="temperature-input" 
+                                        class="setting-slider"
+                                        min="0" 
+                                        max="2" 
+                                        step="0.1" 
+                                        value="0.7"
+                                    />
+                                    <small class="setting-hint">Контролирует креативность ответов (0 = детерминированный, 2 = очень креативный)</small>
+                                </div>
+
+                                <div class="setting-group">
+                                    <label for="max-tokens-input">Максимум токенов:</label>
+                                    <input 
+                                        type="number" 
+                                        id="max-tokens-input" 
+                                        class="setting-input"
+                                        min="100" 
+                                        max="8000" 
+                                        value="2000"
+                                    />
+                                    <small class="setting-hint">Максимальная длина ответа в токенах</small>
+                                </div>
+
+                                <div class="setting-group" id="local-url-group" style="display: none;">
+                                    <label for="local-url-input">URL локального сервера:</label>
+                                    <input 
+                                        type="text" 
+                                        id="local-url-input" 
+                                        class="setting-input"
+                                        placeholder="http://localhost:11434"
+                                    />
+                                    <small class="setting-hint">URL для Ollama (по умолчанию: http://localhost:11434)</small>
+                                </div>
+
+                                <div class="setting-group" id="base-url-group" style="display: none;">
+                                    <label for="base-url-input">Базовый URL:</label>
+                                    <input 
+                                        type="text" 
+                                        id="base-url-input" 
+                                        class="setting-input"
+                                        placeholder="http://localhost:1234/v1"
+                                    />
+                                    <small class="setting-hint">URL для кастомного провайдера или LM Studio (например: http://localhost:1234/v1)</small>
+                                </div>
+
+                                <div class="setting-group" id="api-type-group" style="display: none;">
+                                    <label for="api-type-select">Тип API:</label>
+                                    <select id="api-type-select" class="setting-input">
+                                        <option value="openai">OpenAI-совместимый</option>
+                                        <option value="ollama">Ollama-совместимый</option>
+                                    </select>
+                                    <small class="setting-hint">Тип API для кастомного провайдера (OpenAI для LM Studio/vLLM, Ollama для Ollama-совместимых серверов)</small>
+                                </div>
+
+                                <div class="setting-group">
+                                    <label for="timeout-input">Таймаут (мс):</label>
+                                    <input 
+                                        type="number" 
+                                        id="timeout-input" 
+                                        class="setting-input"
+                                        min="5000" 
+                                        max="300000" 
+                                        value="30000"
+                                    />
+                                    <small class="setting-hint">Максимальное время ожидания ответа</small>
+                                </div>
+
+                                <div class="setting-group" id="local-check-group" style="display: none;">
+                                    <button id="check-local-btn" class="secondary-button">Проверить подключение</button>
+                                    <div id="local-status" class="local-status"></div>
+                                </div>
+
+                                <div class="button-section">
+                                    <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
+                                    <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
+                                </div>
+
+                                <div class="status-section" id="settings-status-section"></div>
+                            </div>
+                        </div>
+
+                        <!-- Подвкладка Векторизация -->
+                        <div class="settings-tab-content" id="settings-tab-vectorization">
+                            <div class="settings-section">
+                                <h2>Настройки векторизации</h2>
+                                
+                                <div class="setting-group">
+                                    <label for="embedder-model-input">Модель эмбеддинга:</label>
+                                    <input 
+                                        type="text" 
+                                        id="embedder-model-input" 
+                                        class="setting-input"
+                                        placeholder="text-embedding-ada-002, nomic-embed-text, all-minilm..."
+                                    />
+                                    <small class="setting-hint">Модель для создания векторных представлений текста</small>
+                                </div>
+
+                                <div class="button-section" style="margin-top: 30px;">
+                                    <button id="vectorize-btn" class="generate-button">Векторизовать все файлы</button>
+                                </div>
+
+                                <div class="status-section" id="vectorization-status-section" style="margin-top: 20px;"></div>
+
+                                <div class="settings-section" style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--vscode-panel-border);">
+                                    <h2>Хранилище эмбеддингов</h2>
+                                    <div class="setting-group">
+                                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                                            <label style="margin: 0; font-weight: 500;">Количество записей:</label>
+                                            <span id="storage-count" style="color: var(--vscode-textLink-foreground); font-weight: 600;">—</span>
+                                            <button id="refresh-storage-count-btn" class="toggle-button" style="padding: 5px 10px; font-size: 12px;" title="Обновить">
+                                                🔄
+                                            </button>
+                                        </div>
+                                        <p style="color: var(--vscode-descriptionForeground); margin-bottom: 15px;">
+                                            Очистка хранилища удалит все векторизованные данные. 
+                                            После очистки необходимо будет заново выполнить векторизацию файлов.
+                                        </p>
+                                        <button id="clear-storage-btn" class="secondary-button" style="background-color: var(--vscode-testing-iconFailed); color: var(--vscode-foreground);">
+                                            Очистить хранилище
                                         </button>
                                     </div>
-                                    <p style="color: var(--vscode-descriptionForeground); margin-bottom: 15px;">
-                                        Очистка хранилища удалит все векторизованные данные. 
-                                        После очистки необходимо будет заново выполнить векторизацию файлов.
-                                    </p>
-                                    <button id="clear-storage-btn" class="secondary-button" style="background-color: var(--vscode-testing-iconFailed); color: var(--vscode-foreground);">
-                                        Очистить хранилище
-                                    </button>
                                 </div>
                             </div>
-
-                            <div class="status-section" id="settings-status-section"></div>
                         </div>
                     </div>
                 </div>

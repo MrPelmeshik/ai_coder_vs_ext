@@ -43,6 +43,7 @@
     const refreshStorageCountBtn = document.getElementById('refresh-storage-count-btn');
     const storageCount = document.getElementById('storage-count');
     const settingsStatusSection = document.getElementById('settings-status-section');
+    const vectorizationStatusSection = document.getElementById('vectorization-status-section');
 
     // Функция запроса количества записей
     function requestStorageCount() {
@@ -68,6 +69,32 @@
             
             // При открытии вкладки настроек запрашиваем количество записей
             if (targetTab === 'settings') {
+                // Проверяем, какая подвкладка активна
+                const activeSettingsTab = document.querySelector('.settings-tab-button.active');
+                if (activeSettingsTab && activeSettingsTab.getAttribute('data-settings-tab') === 'vectorization') {
+                    requestStorageCount();
+                }
+            }
+        });
+    });
+
+    // Управление подвкладками в настройках
+    const settingsTabButtons = document.querySelectorAll('.settings-tab-button');
+    const settingsTabContents = document.querySelectorAll('.settings-tab-content');
+    
+    settingsTabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetTab = button.getAttribute('data-settings-tab');
+            
+            // Обновление активных подвкладок
+            settingsTabButtons.forEach(btn => btn.classList.remove('active'));
+            settingsTabContents.forEach(content => content.classList.remove('active'));
+            
+            button.classList.add('active');
+            document.getElementById(`settings-tab-${targetTab}`).classList.add('active');
+            
+            // При открытии вкладки векторизации запрашиваем количество записей
+            if (targetTab === 'vectorization') {
                 requestStorageCount();
             }
         });
@@ -157,10 +184,12 @@
     // Запрос конфигурации при загрузке
     vscode.postMessage({ command: 'getConfig' });
     
-    // Запрос количества записей при загрузке (если открыта вкладка настроек)
-    // Проверяем, активна ли вкладка настроек
+    // Запрос количества записей при загрузке (если открыта вкладка векторизации)
+    // Проверяем, активна ли вкладка настроек и подвкладка векторизации
     const settingsTab = document.getElementById('tab-settings');
-    if (settingsTab && settingsTab.classList.contains('active')) {
+    const vectorizationTab = document.getElementById('settings-tab-vectorization');
+    if (settingsTab && settingsTab.classList.contains('active') && 
+        vectorizationTab && vectorizationTab.classList.contains('active')) {
         requestStorageCount();
     }
 
@@ -187,17 +216,19 @@
     });
 
     // Обработчик нажатия кнопки векторизации
-    vectorizeBtn.addEventListener('click', () => {
-        // Отправка сообщения в extension
-        vscode.postMessage({
-            command: 'vectorizeAll'
-        });
+    if (vectorizeBtn) {
+        vectorizeBtn.addEventListener('click', () => {
+            // Отправка сообщения в extension
+            vscode.postMessage({
+                command: 'vectorizeAll'
+            });
 
-        // Обновление UI
-        vectorizeBtn.disabled = true;
-        vectorizeBtn.textContent = 'Векторизация...';
-        showStatus('Векторизация файлов начата...', 'info');
-    });
+            // Обновление UI
+            vectorizeBtn.disabled = true;
+            vectorizeBtn.textContent = 'Векторизация...';
+            showSettingsStatus('Векторизация файлов начата...', 'info');
+        });
+    }
 
     // Обработчик нажатия кнопки поиска
     searchBtn.addEventListener('click', () => {
@@ -335,17 +366,23 @@
                 }
                 break;
             case 'vectorizationComplete':
-                vectorizeBtn.disabled = false;
-                vectorizeBtn.textContent = 'Векторизовать все файлы';
-                showStatus(
+                if (vectorizeBtn) {
+                    vectorizeBtn.disabled = false;
+                    vectorizeBtn.textContent = 'Векторизовать все файлы';
+                }
+                showSettingsStatus(
                     `Векторизация завершена. Обработано: ${message.result.processed}, Ошибок: ${message.result.errors}`,
                     message.result.errors > 0 ? 'warning' : 'success'
                 );
+                // Обновляем количество записей после векторизации
+                requestStorageCount();
                 break;
             case 'vectorizationError':
-                vectorizeBtn.disabled = false;
-                vectorizeBtn.textContent = 'Векторизовать все файлы';
-                showStatus(`Ошибка векторизации: ${message.error}`, 'error');
+                if (vectorizeBtn) {
+                    vectorizeBtn.disabled = false;
+                    vectorizeBtn.textContent = 'Векторизовать все файлы';
+                }
+                showSettingsStatus(`Ошибка векторизации: ${message.error}`, 'error');
                 break;
             case 'searchResults':
                 displaySearchResults(message.results);
@@ -456,15 +493,26 @@
      * Отображение статуса (настройки)
      */
     function showSettingsStatus(message, type) {
-        settingsStatusSection.textContent = message;
-        settingsStatusSection.className = `status status-${type}`;
+        // Определяем, какая вкладка активна
+        const activeSettingsTab = document.querySelector('.settings-tab-button.active');
+        const isVectorizationTab = activeSettingsTab && activeSettingsTab.getAttribute('data-settings-tab') === 'vectorization';
         
-        // Автоматическое скрытие через 5 секунд для success/info
-        if (type === 'success' || type === 'info') {
-            setTimeout(() => {
-                settingsStatusSection.textContent = '';
-                settingsStatusSection.className = 'status';
-            }, 5000);
+        // Показываем статус в соответствующей секции
+        const statusSection = isVectorizationTab && vectorizationStatusSection 
+            ? vectorizationStatusSection 
+            : settingsStatusSection;
+        
+        if (statusSection) {
+            statusSection.textContent = message;
+            statusSection.className = `status status-${type}`;
+            
+            // Автоматическое скрытие через 5 секунд для success/info
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    statusSection.textContent = '';
+                    statusSection.className = 'status';
+                }, 5000);
+            }
         }
     }
 
