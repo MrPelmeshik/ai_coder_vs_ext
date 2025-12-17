@@ -1,5 +1,8 @@
 import { LLMProvider, LLMConfig } from '../services/llmService';
 import fetch from 'node-fetch';
+import { DEFAULT_LOCAL_API_URL, DEFAULT_OLLAMA_URL, DEFAULT_TIMEOUT } from '../constants';
+import { ApiErrorHandler } from '../utils/errorHandler';
+import { Logger } from '../utils/logger';
 
 /**
  * Провайдер для работы с локальными API (LM Studio, локальные серверы и т.д.)
@@ -24,10 +27,10 @@ export class LocalApiProvider implements LLMProvider {
      * Генерация через OpenAI-совместимый API
      */
     private async _generateOpenAILike(prompt: string, config: LLMConfig): Promise<string> {
-        const baseUrl = config.baseUrl || config.localUrl || 'http://localhost:1234';
+        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_LOCAL_API_URL;
         const model = config.model || 'local-model';
         const apiKey = config.apiKey || 'not-needed';
-        const timeout = config.timeout || 30000;
+        const timeout = config.timeout || DEFAULT_TIMEOUT;
 
         // Используем OpenAI-совместимый формат
         const url = `${baseUrl}/v1/chat/completions`;
@@ -96,16 +99,9 @@ export class LocalApiProvider implements LLMProvider {
 
             return content.trim();
         } catch (error) {
-            if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    throw new Error(`Таймаут запроса к локальному API (${timeout}ms). Убедитесь, что сервер запущен и доступен по адресу ${baseUrl}`);
-                }
-                if (error.message.includes('fetch')) {
-                    throw new Error(`Не удалось подключиться к локальному API по адресу ${baseUrl}. Убедитесь, что сервер запущен.`);
-                }
-                throw error;
-            }
-            throw new Error('Неизвестная ошибка при обращении к локальному API');
+            Logger.error('Ошибка генерации через локальный API', error as Error, { url, model });
+            ApiErrorHandler.handle(error, 'локальный API', timeout, baseUrl);
+            throw error;
         }
     }
 
@@ -113,9 +109,9 @@ export class LocalApiProvider implements LLMProvider {
      * Генерация через Ollama-совместимый API
      */
     private async _generateOllamaLike(prompt: string, config: LLMConfig): Promise<string> {
-        const baseUrl = config.baseUrl || config.localUrl || 'http://localhost:11434';
+        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_OLLAMA_URL;
         const model = config.model || 'llama2';
-        const timeout = config.timeout || 30000;
+        const timeout = config.timeout || DEFAULT_TIMEOUT;
 
         // Используем Ollama-совместимый формат
         const url = `${baseUrl}/api/generate`;
@@ -161,16 +157,9 @@ export class LocalApiProvider implements LLMProvider {
 
             return data.response.trim();
         } catch (error) {
-            if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    throw new Error(`Таймаут запроса к Ollama-like API (${timeout}ms). Убедитесь, что сервер запущен и доступен по адресу ${baseUrl}`);
-                }
-                if (error.message.includes('fetch')) {
-                    throw new Error(`Не удалось подключиться к Ollama-like API по адресу ${baseUrl}. Убедитесь, что сервер запущен.`);
-                }
-                throw error;
-            }
-            throw new Error('Неизвестная ошибка при обращении к Ollama-like API');
+            Logger.error('Ошибка генерации через Ollama-like API', error as Error, { url, model });
+            ApiErrorHandler.handle(error, 'Ollama-like API', timeout, baseUrl);
+            throw error;
         }
     }
 
@@ -191,10 +180,10 @@ export class LocalApiProvider implements LLMProvider {
      * Потоковая генерация через OpenAI-совместимый API
      */
     private async *_streamOpenAILike(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const baseUrl = config.baseUrl || config.localUrl || 'http://localhost:1234';
+        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_LOCAL_API_URL;
         const model = config.model || 'local-model';
         const apiKey = config.apiKey || 'not-needed';
-        const timeout = config.timeout || 30000;
+        const timeout = config.timeout || DEFAULT_TIMEOUT;
 
         const url = `${baseUrl}/v1/chat/completions`;
 
@@ -323,16 +312,9 @@ export class LocalApiProvider implements LLMProvider {
                 }
             }
         } catch (error) {
-            if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    throw new Error(`Таймаут запроса к локальному API (${timeout}ms). Убедитесь, что сервер запущен и доступен по адресу ${baseUrl}`);
-                }
-                if (error.message.includes('fetch')) {
-                    throw new Error(`Не удалось подключиться к локальному API по адресу ${baseUrl}. Убедитесь, что сервер запущен.`);
-                }
-                throw error;
-            }
-            throw new Error('Неизвестная ошибка при обращении к локальному API');
+            Logger.error('Ошибка потоковой генерации через локальный API', error as Error, { url, model });
+            ApiErrorHandler.handle(error, 'локальный API', timeout, baseUrl);
+            throw error;
         }
     }
 
@@ -340,9 +322,9 @@ export class LocalApiProvider implements LLMProvider {
      * Потоковая генерация через Ollama-совместимый API
      */
     private async *_streamOllamaLike(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const baseUrl = config.baseUrl || config.localUrl || 'http://localhost:11434';
+        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_OLLAMA_URL;
         const model = config.model || 'llama2';
-        const timeout = config.timeout || 30000;
+        const timeout = config.timeout || DEFAULT_TIMEOUT;
 
         const url = `${baseUrl}/api/generate`;
 
@@ -447,16 +429,9 @@ export class LocalApiProvider implements LLMProvider {
                 }
             }
         } catch (error) {
-            if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    throw new Error(`Таймаут запроса к Ollama-like API (${timeout}ms). Убедитесь, что сервер запущен и доступен по адресу ${baseUrl}`);
-                }
-                if (error.message.includes('fetch')) {
-                    throw new Error(`Не удалось подключиться к Ollama-like API по адресу ${baseUrl}. Убедитесь, что сервер запущен.`);
-                }
-                throw error;
-            }
-            throw new Error('Неизвестная ошибка при обращении к Ollama-like API');
+            Logger.error('Ошибка потоковой генерации через Ollama-like API', error as Error, { url, model });
+            ApiErrorHandler.handle(error, 'Ollama-like API', timeout, baseUrl);
+            throw error;
         }
     }
 

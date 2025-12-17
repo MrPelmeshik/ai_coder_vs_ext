@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { LocalApiProvider } from '../providers/localApiProvider';
 
-const API_KEY_SECRET_KEY = 'aiCoder.apiKey';
+import { STORAGE_KEYS } from '../constants';
+
+const API_KEY_SECRET_KEY = STORAGE_KEYS.API_KEY;
 
 /**
  * Сервис для работы с LLM (Large Language Models)
@@ -169,6 +171,7 @@ export class LLMService {
         try {
             return await this._context.secrets.get(API_KEY_SECRET_KEY);
         } catch (error) {
+            // Logger может быть не инициализирован на этом этапе
             console.error('Ошибка получения API ключа:', error);
             return undefined;
         }
@@ -187,6 +190,7 @@ export class LLMService {
                 await this._reloadConfig();
             }
         } catch (error) {
+            // Logger может быть не инициализирован на этом этапе
             console.error('Ошибка сохранения API ключа:', error);
             throw error;
         }
@@ -214,7 +218,6 @@ export class LLMService {
 
 function generatedCode() {
     // Здесь будет реальный сгенерированный код
-    console.log('Генерация кода для: ${prompt}');
     return 'Результат';
 }`;
     }

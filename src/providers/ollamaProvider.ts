@@ -1,5 +1,8 @@
 import { LLMProvider, LLMConfig } from '../services/llmService';
 import fetch from 'node-fetch';
+import { DEFAULT_OLLAMA_URL, DEFAULT_TIMEOUT } from '../constants';
+import { ApiErrorHandler } from '../utils/errorHandler';
+import { Logger } from '../utils/logger';
 
 /**
  * Провайдер для работы с Ollama (локальные модели)
@@ -12,9 +15,9 @@ export class OllamaProvider implements LLMProvider {
      * Генерация кода через Ollama API
      */
     async generate(prompt: string, config: LLMConfig): Promise<string> {
-        const localUrl = config.localUrl || 'http://localhost:11434';
+        const localUrl = config.localUrl || DEFAULT_OLLAMA_URL;
         const model = config.model || 'llama2';
-        const timeout = config.timeout || 30000;
+        const timeout = config.timeout || DEFAULT_TIMEOUT;
 
         // Формируем URL для Ollama API
         const url = `${localUrl}/api/generate`;
@@ -61,16 +64,9 @@ export class OllamaProvider implements LLMProvider {
 
             return data.response.trim();
         } catch (error) {
-            if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    throw new Error(`Таймаут запроса к Ollama (${timeout}ms). Убедитесь, что Ollama запущен и доступен по адресу ${localUrl}`);
-                }
-                if (error.message.includes('fetch')) {
-                    throw new Error(`Не удалось подключиться к Ollama по адресу ${localUrl}. Убедитесь, что Ollama запущен.`);
-                }
-                throw error;
-            }
-            throw new Error('Неизвестная ошибка при обращении к Ollama');
+            Logger.error('Ошибка генерации через Ollama', error as Error, { url, model });
+            ApiErrorHandler.handle(error, 'Ollama', timeout, localUrl);
+            throw error;
         }
     }
 
@@ -78,9 +74,9 @@ export class OllamaProvider implements LLMProvider {
      * Потоковая генерация кода через Ollama API
      */
     async *stream(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const localUrl = config.localUrl || 'http://localhost:11434';
+        const localUrl = config.localUrl || DEFAULT_OLLAMA_URL;
         const model = config.model || 'llama2';
-        const timeout = config.timeout || 30000;
+        const timeout = config.timeout || DEFAULT_TIMEOUT;
 
         const url = `${localUrl}/api/generate`;
 
@@ -186,16 +182,9 @@ export class OllamaProvider implements LLMProvider {
                 }
             }
         } catch (error) {
-            if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    throw new Error(`Таймаут запроса к Ollama (${timeout}ms). Убедитесь, что Ollama запущен и доступен по адресу ${localUrl}`);
-                }
-                if (error.message.includes('fetch')) {
-                    throw new Error(`Не удалось подключиться к Ollama по адресу ${localUrl}. Убедитесь, что Ollama запущен.`);
-                }
-                throw error;
-            }
-            throw new Error('Неизвестная ошибка при обращении к Ollama');
+            Logger.error('Ошибка потоковой генерации через Ollama', error as Error, { url, model });
+            ApiErrorHandler.handle(error, 'Ollama', timeout, localUrl);
+            throw error;
         }
     }
 

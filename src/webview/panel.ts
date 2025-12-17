@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { LLMService } from '../services/llmService';
-import { EmbeddingService } from '../services/embeddingService';
+import { EmbeddingService } from '../services/embedding/embeddingService';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { LocalApiProvider } from '../providers/localApiProvider';
+import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage } from '../types/messages';
 
 /**
  * Класс для управления Webview панелью AI Coder
@@ -32,34 +33,36 @@ export class AICoderPanel {
 
         // Обработка сообщений от webview
         this._panel.webview.onDidReceiveMessage(
-            (message: any) => {
+            (message: WebviewMessage) => {
                 switch (message.command) {
                     case 'generate':
-                        this._handleGenerate(message.text);
+                        this._handleGenerate((message as GenerateMessage).text);
                         return;
                     case 'getConfig':
                         this._sendConfigToWebview();
                         return;
                     case 'updateConfig':
-                        this._handleUpdateConfig(message.config);
+                        this._handleUpdateConfig((message as UpdateConfigMessage).config);
                         return;
                     case 'checkLocalServer':
-                        this._handleCheckLocalServer(message.url, message.provider, message.apiType);
+                        const checkMsg = message as CheckLocalServerMessage;
+                        this._handleCheckLocalServer(checkMsg.url, checkMsg.provider, checkMsg.apiType);
                         return;
                     case 'alert':
-                        vscode.window.showInformationMessage(message.text);
+                        vscode.window.showInformationMessage((message as any).text);
                         return;
                     case 'vectorizeAll':
                         this._handleVectorizeAll();
                         return;
                     case 'search':
-                        this._handleSearch(message.query, message.limit);
+                        const searchMsg = message as SearchMessage;
+                        this._handleSearch(searchMsg.query, searchMsg.limit);
                         return;
                     case 'getAllItems':
-                        this._handleGetAllItems(message.limit);
+                        this._handleGetAllItems((message as GetAllItemsMessage).limit);
                         return;
                     case 'openFile':
-                        this._handleOpenFile(message.path);
+                        this._handleOpenFile((message as OpenFileMessage).path);
                         return;
                     case 'clearStorage':
                         this._handleClearStorage();

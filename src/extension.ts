@@ -3,7 +3,9 @@ import { AICoderPanel } from './webview/panel';
 import { LLMService } from './services/llmService';
 import { FileStatusService, FileStatus } from './services/fileStatusService';
 import { FileDecorationProvider } from './providers/fileDecorationProvider';
-import { EmbeddingService } from './services/embeddingService';
+import { EmbeddingService } from './services/embedding/embeddingService';
+import { LanceDbStorage } from './storage/implementations/lanceDbStorage';
+import { Logger } from './utils/logger';
 
 let llmService: LLMService | undefined;
 let fileStatusService: FileStatusService | undefined;
@@ -14,7 +16,9 @@ let embeddingService: EmbeddingService | undefined;
  * Активация расширения
  */
 export function activate(context: vscode.ExtensionContext) {
-    console.log('AI Coder Extension активировано');
+    // Инициализация логгера
+    Logger.initialize(context);
+    Logger.info('AI Coder Extension активировано');
 
     // Инициализация сервиса LLM
     llmService = new LLMService(context);
@@ -22,10 +26,13 @@ export function activate(context: vscode.ExtensionContext) {
     // Инициализация сервиса статусов файлов
     fileStatusService = new FileStatusService(context);
 
-    // Инициализация сервиса эмбеддингов
-    embeddingService = new EmbeddingService(context, llmService, fileStatusService);
+    // Инициализация хранилища
+    const storage = new LanceDbStorage(context);
+
+    // Инициализация сервиса эмбеддингов (с Dependency Injection)
+    embeddingService = new EmbeddingService(context, llmService, fileStatusService, storage);
     embeddingService.initialize().catch(err => {
-        console.error('Ошибка инициализации EmbeddingService:', err);
+        Logger.error('Ошибка инициализации EmbeddingService', err as Error);
     });
 
     // Регистрация провайдера декораций файлов
@@ -61,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             } catch (error) {
                 // Игнорируем ошибки при отслеживании изменений
-                console.warn(`Ошибка обработки изменения файла ${uri.fsPath}:`, error);
+                Logger.warn(`Ошибка обработки изменения файла ${uri.fsPath}`, error as Error);
             }
         }
     });
@@ -155,7 +162,7 @@ export function activate(context: vscode.ExtensionContext) {
  * Деактивация расширения
  */
 export function deactivate() {
-    console.log('AI Coder Extension деактивировано');
+    Logger.info('AI Coder Extension деактивировано');
     if (llmService) {
         llmService.dispose();
         llmService = undefined;
@@ -172,5 +179,6 @@ export function deactivate() {
         embeddingService.dispose();
         embeddingService = undefined;
     }
+    Logger.dispose();
 }
 

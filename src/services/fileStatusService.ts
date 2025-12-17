@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { VectorStorage } from '../storage/interfaces/vectorStorage';
+import { STORAGE_KEYS } from '../constants';
+import { Logger } from '../utils/logger';
 
 /**
  * Статусы обработки файлов
@@ -25,7 +27,7 @@ export class FileStatusService {
     private _onStatusChangedEmitter: vscode.EventEmitter<vscode.Uri> = new vscode.EventEmitter<vscode.Uri>();
     public readonly onStatusChanged: vscode.Event<vscode.Uri> = this._onStatusChangedEmitter.event;
 
-    private readonly STORAGE_KEY = 'aiCoder.excludedFiles';
+    private readonly STORAGE_KEY = STORAGE_KEYS.EXCLUDED_FILES;
 
     constructor(context: vscode.ExtensionContext, storage?: VectorStorage) {
         this._context = context;
@@ -67,7 +69,7 @@ export class FileStatusService {
                 }
             } catch (error) {
                 // В случае ошибки считаем файл необработанным
-                console.warn(`Ошибка проверки статуса файла ${filePath}:`, error);
+                Logger.warn(`Ошибка проверки статуса файла ${filePath}`, error as Error);
             }
         }
 
