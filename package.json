@@ -10,7 +10,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:aiCoder.openPanel"
+    "onCommand:aiCoder.openPanel",
+    "onCommand:aiCoder.markAsNotProcessed",
+    "onCommand:aiCoder.markAsExcluded"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -18,12 +20,36 @@
       {
         "command": "aiCoder.openPanel",
         "title": "Open AI Coder Panel"
+      },
+      {
+        "command": "aiCoder.markAsNotProcessed",
+        "title": "Сбросить статус",
+        "icon": "$(circle-outline)"
+      },
+      {
+        "command": "aiCoder.markAsExcluded",
+        "title": "Исключить из обработки",
+        "icon": "$(close)"
+      },
+      {
+        "command": "aiCoder.clearAllStatuses",
+        "title": "Очистить все статусы",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "aiCoder.openPanel"
+        },
+        {
+          "command": "aiCoder.markAsNotProcessed"
+        },
+        {
+          "command": "aiCoder.markAsExcluded"
+        },
+        {
+          "command": "aiCoder.clearAllStatuses"
         }
       ],
       "view/title": [
@@ -31,6 +57,18 @@
           "command": "aiCoder.openPanel",
           "when": "view == aiCoderPanel",
           "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "aiCoder.markAsNotProcessed",
+          "title": "AI Coder: Сбросить статус",
+          "group": "aiCoder@1"
+        },
+        {
+          "command": "aiCoder.markAsExcluded",
+          "title": "AI Coder: Исключить из обработки",
+          "group": "aiCoder@2"
         }
       ]
     },
@@ -59,6 +97,11 @@
           "default": "gpt-4",
           "description": "Модель LLM (например: gpt-4, gpt-3.5-turbo, claude-3-opus)"
         },
+        "aiCoder.llm.embedderModel": {
+          "type": "string",
+          "default": "",
+          "description": "Модель эмбеддинга для создания векторных представлений текста (например: text-embedding-ada-002, nomic-embed-text)"
+        },
         "aiCoder.llm.temperature": {
           "type": "number",
           "default": 0.7,
@@ -77,6 +120,19 @@
           "type": "string",
           "default": "",
           "description": "Базовый URL для кастомного провайдера (опционально)"
+        },
+        "aiCoder.llm.apiType": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "ollama"
+          ],
+          "enumDescriptions": [
+            "OpenAI-совместимый API (LM Studio, vLLM и т.д.)",
+            "Ollama-совместимый API"
+          ],
+          "default": "openai",
+          "description": "Тип API для кастомного провайдера"
         },
         "aiCoder.llm.localUrl": {
           "type": "string",
@@ -105,6 +161,7 @@
     "typescript": "^4.9.4"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.5.2",
     "node-fetch": "^2.7.0"
   }
 }

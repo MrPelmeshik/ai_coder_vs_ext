@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { LLMService } from '../services/llmService';
+import { EmbeddingService } from '../services/embeddingService';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { LocalApiProvider } from '../providers/localApiProvider';
 
@@ -14,12 +15,14 @@ export class AICoderPanel {
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
     private readonly _llmService: LLMService;
+    private readonly _embeddingService: EmbeddingService;
     private _disposables: vscode.Disposable[] = [];
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, llmService: LLMService) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService) {
         this._panel = panel;
         this._extensionUri = extensionUri;
         this._llmService = llmService;
+        this._embeddingService = embeddingService;
 
         // Установка начального содержимого webview
         this._update();
@@ -41,10 +44,25 @@ export class AICoderPanel {
                         this._handleUpdateConfig(message.config);
                         return;
                     case 'checkLocalServer':
-                        this._handleCheckLocalServer(message.url, message.provider);
+                        this._handleCheckLocalServer(message.url, message.provider, message.apiType);
                         return;
                     case 'alert':
                         vscode.window.showInformationMessage(message.text);
+                        return;
+                    case 'vectorizeAll':
+                        this._handleVectorizeAll();
+                        return;
+                    case 'search':
+                        this._handleSearch(message.query, message.limit);
+                        return;
+                    case 'openFile':
+                        this._handleOpenFile(message.path);
+                        return;
+                    case 'clearStorage':
+                        this._handleClearStorage();
+                        return;
+                    case 'getStorageCount':
+                        this._handleGetStorageCount();
                         return;
                 }
             },
@@ -59,7 +77,7 @@ export class AICoderPanel {
     /**
      * Создание или показ существующей панели
      */
-    public static createOrShow(extensionUri: vscode.Uri, llmService: LLMService) {
+    public static createOrShow(extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService) {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
@@ -84,7 +102,7 @@ export class AICoderPanel {
             }
         );
 
-        AICoderPanel.currentPanel = new AICoderPanel(panel, extensionUri, llmService);
+        AICoderPanel.currentPanel = new AICoderPanel(panel, extensionUri, llmService, embeddingService);
     }
 
     /**
@@ -131,7 +149,7 @@ export class AICoderPanel {
     /**
      * Обработка проверки локального сервера
      */
-    private async _handleCheckLocalServer(url: string, provider: string) {
+    private async _handleCheckLocalServer(url: string, provider: string, apiType?: string) {
         try {
             let available = false;
             if (provider === 'ollama') {
@@ -139,7 +157,7 @@ export class AICoderPanel {
                 available = await providerInstance.checkAvailability(url);
             } else if (provider === 'custom') {
                 const providerInstance = new LocalApiProvider();
-                available = await providerInstance.checkAvailability(url);
+                available = await providerInstance.checkAvailability(url, apiType);
             }
 
             this._panel.webview.postMessage({
@@ -150,6 +168,197 @@ export class AICoderPanel {
             this._panel.webview.postMessage({
                 command: 'localServerStatus',
                 available: false
+            });
+        }
+    }
+
+    /**
+     * Обработка команды векторизации всех файлов
+     */
+    private async _handleVectorizeAll() {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('Не открыта рабочая область');
+            return;
+        }
+
+        // Запрашиваем подтверждение
+        const action = await vscode.window.showWarningMessage(
+            'Векторизация может занять длительное время. Продолжить?',
+            { modal: true },
+            'Да',
+            'Нет'
+        );
+
+        if (action !== 'Да') {
+            return;
+        }
+
+        // Показываем прогресс
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Векторизация файлов",
+            cancellable: true
+        }, async (progress, token) => {
+            progress.report({ increment: 0, message: "Начало векторизации..." });
+
+            try {
+                let lastProcessed = 0;
+                let lastErrors = 0;
+
+                // Запускаем векторизацию
+                const result = await this._embeddingService.vectorizeAllUnprocessed(workspaceFolder);
+
+                progress.report({ increment: 100, message: "Готово!" });
+
+                // Отправка результата в webview
+                this._panel.webview.postMessage({
+                    command: 'vectorizationComplete',
+                    result: {
+                        processed: result.processed,
+                        errors: result.errors
+                    }
+                });
+
+                vscode.window.showInformationMessage(
+                    `Векторизация завершена. Обработано: ${result.processed}, Ошибок: ${result.errors}`
+                );
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+                vscode.window.showErrorMessage(`Ошибка векторизации: ${errorMessage}`);
+                
+                this._panel.webview.postMessage({
+                    command: 'vectorizationError',
+                    error: errorMessage
+                });
+            }
+        });
+    }
+
+    /**
+     * Обработка команды поиска
+     */
+    private async _handleSearch(query: string, limit: number = 10) {
+        if (!query || query.trim().length === 0) {
+            vscode.window.showWarningMessage('Пожалуйста, введите запрос для поиска');
+            return;
+        }
+
+        // Показываем индикатор прогресса
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Поиск в хранилище",
+            cancellable: false
+        }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
+            progress.report({ increment: 0, message: "Поиск похожих файлов..." });
+
+            try {
+                const results = await this._embeddingService.searchSimilar(query, limit);
+                
+                progress.report({ increment: 100, message: "Готово!" });
+                
+                // Отправка результата обратно в webview
+                this._panel.webview.postMessage({
+                    command: 'searchResults',
+                    results: results
+                });
+
+                if (results.length === 0) {
+                    vscode.window.showInformationMessage('Похожие файлы не найдены');
+                } else {
+                    vscode.window.showInformationMessage(`Найдено файлов: ${results.length}`);
+                }
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+                vscode.window.showErrorMessage(`Ошибка поиска: ${errorMessage}`);
+                
+                this._panel.webview.postMessage({
+                    command: 'searchError',
+                    error: errorMessage
+                });
+            }
+        });
+    }
+
+    /**
+     * Обработка открытия файла
+     */
+    private async _handleOpenFile(filePath: string) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const document = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(document);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            vscode.window.showErrorMessage(`Не удалось открыть файл ${filePath}: ${errorMessage}`);
+        }
+    }
+
+    /**
+     * Обработка очистки хранилища
+     */
+    private async _handleClearStorage() {
+        // Запрашиваем подтверждение
+        const confirm = await vscode.window.showWarningMessage(
+            'Вы уверены, что хотите очистить хранилище эмбеддингов? Все векторизованные данные будут удалены.',
+            { modal: true },
+            'Да, очистить',
+            'Отмена'
+        );
+
+        if (confirm !== 'Да, очистить') {
+            return;
+        }
+
+        // Показываем индикатор прогресса
+        vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "Очистка хранилища",
+            cancellable: false
+        }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
+            progress.report({ increment: 0, message: "Очистка данных..." });
+
+            try {
+                await this._embeddingService.clearStorage();
+                
+                progress.report({ increment: 100, message: "Готово!" });
+                
+                // Отправка результата обратно в webview
+                this._panel.webview.postMessage({
+                    command: 'storageCleared'
+                });
+
+                vscode.window.showInformationMessage('Хранилище эмбеддингов успешно очищено');
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+                vscode.window.showErrorMessage(`Ошибка очистки хранилища: ${errorMessage}`);
+                
+                this._panel.webview.postMessage({
+                    command: 'storageClearError',
+                    error: errorMessage
+                });
+            }
+        });
+    }
+
+    /**
+     * Обработка получения количества записей в хранилище
+     */
+    private async _handleGetStorageCount() {
+        try {
+            const count = await this._embeddingService.getStorageCount();
+            
+            // Отправка результата обратно в webview
+            this._panel.webview.postMessage({
+                command: 'storageCount',
+                count: count
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            
+            this._panel.webview.postMessage({
+                command: 'storageCountError',
+                error: errorMessage
             });
         }
     }
@@ -226,6 +435,7 @@ export class AICoderPanel {
                         <h1>AI Code Generator</h1>
                         <div class="tabs">
                             <button class="tab-button active" data-tab="generate">Генерация</button>
+                            <button class="tab-button" data-tab="search">Поиск</button>
                             <button class="tab-button" data-tab="settings">Настройки</button>
                         </div>
                     </div>
@@ -242,12 +452,33 @@ export class AICoderPanel {
                         </div>
                         <div class="button-section">
                             <button id="generate-btn" class="generate-button">Сгенерировать код</button>
+                            <button id="vectorize-btn" class="secondary-button">Векторизовать все файлы</button>
                         </div>
                         <div class="result-section" id="result-section" style="display: none;">
                             <h2>Результат:</h2>
                             <pre id="result-content"></pre>
                         </div>
                         <div class="status-section" id="status-section"></div>
+                    </div>
+
+                    <!-- Вкладка поиска -->
+                    <div class="tab-content" id="tab-search">
+                        <div class="input-section">
+                            <label for="search-query-input">Поиск похожих файлов по запросу:</label>
+                            <textarea 
+                                id="search-query-input" 
+                                placeholder="Например: функция для работы с файлами, обработка ошибок..."
+                                rows="3"
+                            ></textarea>
+                        </div>
+                        <div class="button-section">
+                            <button id="search-btn" class="generate-button">Найти похожие файлы</button>
+                        </div>
+                        <div class="result-section" id="search-result-section" style="display: none;">
+                            <h2>Найденные файлы:</h2>
+                            <div id="search-results-list"></div>
+                        </div>
+                        <div class="status-section" id="search-status-section"></div>
                     </div>
 
                     <!-- Вкладка настроек -->
@@ -280,7 +511,7 @@ export class AICoderPanel {
                             </div>
 
                             <div class="setting-group">
-                                <label for="model-input">Модель:</label>
+                                <label for="model-input">Модель LLM:</label>
                                 <input 
                                     type="text" 
                                     id="model-input" 
@@ -288,6 +519,17 @@ export class AICoderPanel {
                                     placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
                                 />
                                 <small class="setting-hint">Название модели вашего провайдера</small>
+                            </div>
+
+                            <div class="setting-group">
+                                <label for="embedder-model-input">Модель эмбеддинга:</label>
+                                <input 
+                                    type="text" 
+                                    id="embedder-model-input" 
+                                    class="setting-input"
+                                    placeholder="text-embedding-ada-002, nomic-embed-text, all-minilm..."
+                                />
+                                <small class="setting-hint">Модель для создания векторных представлений текста (опционально)</small>
                             </div>
 
                             <div class="setting-group">
@@ -339,6 +581,15 @@ export class AICoderPanel {
                                 <small class="setting-hint">URL для кастомного провайдера или LM Studio (например: http://localhost:1234/v1)</small>
                             </div>
 
+                            <div class="setting-group" id="api-type-group" style="display: none;">
+                                <label for="api-type-select">Тип API:</label>
+                                <select id="api-type-select" class="setting-input">
+                                    <option value="openai">OpenAI-совместимый</option>
+                                    <option value="ollama">Ollama-совместимый</option>
+                                </select>
+                                <small class="setting-hint">Тип API для кастомного провайдера (OpenAI для LM Studio/vLLM, Ollama для Ollama-совместимых серверов)</small>
+                            </div>
+
                             <div class="setting-group">
                                 <label for="timeout-input">Таймаут (мс):</label>
                                 <input 
@@ -360,6 +611,26 @@ export class AICoderPanel {
                             <div class="button-section">
                                 <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
                                 <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
+                            </div>
+
+                            <div class="settings-section" style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--vscode-panel-border);">
+                                <h2>Хранилище эмбеддингов</h2>
+                                <div class="setting-group">
+                                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                                        <label style="margin: 0; font-weight: 500;">Количество записей:</label>
+                                        <span id="storage-count" style="color: var(--vscode-textLink-foreground); font-weight: 600;">—</span>
+                                        <button id="refresh-storage-count-btn" class="toggle-button" style="padding: 5px 10px; font-size: 12px;" title="Обновить">
+                                            🔄
+                                        </button>
+                                    </div>
+                                    <p style="color: var(--vscode-descriptionForeground); margin-bottom: 15px;">
+                                        Очистка хранилища удалит все векторизованные данные. 
+                                        После очистки необходимо будет заново выполнить векторизацию файлов.
+                                    </p>
+                                    <button id="clear-storage-btn" class="secondary-button" style="background-color: var(--vscode-testing-iconFailed); color: var(--vscode-foreground);">
+                                        Очистить хранилище
+                                    </button>
+                                </div>
                             </div>
 
                             <div class="status-section" id="settings-status-section"></div>

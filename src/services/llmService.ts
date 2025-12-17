@@ -89,11 +89,13 @@ export class LLMService {
             provider: config.get<string>('llm.provider', 'openai'),
             apiKey: apiKey || '',
             model: config.get<string>('llm.model', 'gpt-4'),
+            embedderModel: config.get<string>('llm.embedderModel', ''),
             temperature: config.get<number>('llm.temperature', 0.7),
             maxTokens: config.get<number>('llm.maxTokens', 2000),
             baseUrl: config.get<string>('llm.baseUrl', ''),
             localUrl: config.get<string>('llm.localUrl', 'http://localhost:11434'),
-            timeout: config.get<number>('llm.timeout', 30000)
+            timeout: config.get<number>('llm.timeout', 30000),
+            apiType: config.get<string>('llm.apiType', 'openai')
         };
     }
 
@@ -107,11 +109,13 @@ export class LLMService {
             provider: config.get<string>('llm.provider', 'openai'),
             apiKey: '', // Будет загружен асинхронно
             model: config.get<string>('llm.model', 'gpt-4'),
+            embedderModel: config.get<string>('llm.embedderModel', ''),
             temperature: config.get<number>('llm.temperature', 0.7),
             maxTokens: config.get<number>('llm.maxTokens', 2000),
             baseUrl: config.get<string>('llm.baseUrl', ''),
             localUrl: config.get<string>('llm.localUrl', 'http://localhost:11434'),
-            timeout: config.get<number>('llm.timeout', 30000)
+            timeout: config.get<number>('llm.timeout', 30000),
+            apiType: config.get<string>('llm.apiType', 'openai')
         };
     }
 
@@ -192,6 +196,9 @@ function generatedCode() {
         if (config.model !== undefined) {
             await workspaceConfig.update('llm.model', config.model, vscode.ConfigurationTarget.Global);
         }
+        if (config.embedderModel !== undefined) {
+            await workspaceConfig.update('llm.embedderModel', config.embedderModel, vscode.ConfigurationTarget.Global);
+        }
         if (config.temperature !== undefined) {
             await workspaceConfig.update('llm.temperature', config.temperature, vscode.ConfigurationTarget.Global);
         }
@@ -206,6 +213,9 @@ function generatedCode() {
         }
         if (config.timeout !== undefined) {
             await workspaceConfig.update('llm.timeout', config.timeout, vscode.ConfigurationTarget.Global);
+        }
+        if (config.apiType !== undefined) {
+            await workspaceConfig.update('llm.apiType', config.apiType, vscode.ConfigurationTarget.Global);
         }
         
         // API ключ сохраняется отдельно через SecretStorage
@@ -288,11 +298,13 @@ export interface LLMConfig {
     provider: string;
     apiKey: string;
     model: string;
+    embedderModel?: string;
     temperature: number;
     maxTokens: number;
     baseUrl?: string;
     localUrl?: string;
     timeout?: number;
+    apiType?: string; // Тип API для кастомного провайдера: 'openai' | 'ollama'
 }
 
 /**

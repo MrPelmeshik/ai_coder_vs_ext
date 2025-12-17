@@ -66,6 +66,28 @@ h2 {
     color: var(--vscode-input-placeholderForeground);
 }
 
+#search-query-input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--vscode-input-border);
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    border-radius: 4px;
+    resize: vertical;
+    min-height: 120px;
+}
+
+#search-query-input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+#search-query-input::placeholder {
+    color: var(--vscode-input-placeholderForeground);
+}
+
 .button-section {
     margin-bottom: 20px;
 }
@@ -336,5 +358,61 @@ h2 {
 .local-status-error {
     background-color: var(--vscode-testing-iconFailed);
     color: var(--vscode-foreground);
+}
+
+/* Стили для результатов поиска */
+.search-results-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.search-result-item {
+    background-color: var(--vscode-list-hoverBackground);
+    border: 1px solid var(--vscode-list-inactiveSelectionBackground);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.search-result-item:hover {
+    background-color: var(--vscode-list-activeSelectionBackground);
+}
+
+.search-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.search-result-type {
+    font-size: 18px;
+    margin-right: 8px;
+}
+
+.search-result-similarity {
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.search-result-path {
+    color: var(--vscode-textLink-foreground);
+    font-family: var(--vscode-editor-font-family);
+    font-size: 13px;
+    word-break: break-all;
+    margin-bottom: 4px;
+}
+
+.search-result-kind {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    text-transform: uppercase;
 }
 
