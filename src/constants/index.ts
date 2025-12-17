@@ -1,16 +1,50 @@
 /**
  * Константы для расширения AI Coder
+ * 
+ * ВАЖНО: Все дефолтные значения вынесены в настройки VS Code.
+ * Здесь только ключи для доступа к настройкам и неизменяемые константы.
  */
 
-// URL по умолчанию
-export const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
-export const DEFAULT_LOCAL_API_URL = 'http://localhost:1234';
-export const DEFAULT_TIMEOUT = 30000;
+// Ключи для доступа к настройкам LLM
+export const CONFIG_KEYS = {
+    LLM: {
+        PROVIDER: 'llm.provider',
+        MODEL: 'llm.model',
+        EMBEDDER_MODEL: 'llm.embedderModel',
+        TEMPERATURE: 'llm.temperature',
+        MAX_TOKENS: 'llm.maxTokens',
+        BASE_URL: 'llm.baseUrl',
+        API_TYPE: 'llm.apiType',
+        LOCAL_URL: 'llm.localUrl',
+        TIMEOUT: 'llm.timeout',
+        SYSTEM_PROMPT: 'llm.systemPrompt',
+        DEFAULT_MODEL_OPENAI: 'llm.defaultModelOpenai',
+        DEFAULT_MODEL_OLLAMA: 'llm.defaultModelOllama',
+        DEFAULT_MODEL_LOCAL_API: 'llm.defaultModelLocalApi',
+        API_KEY_NOT_NEEDED: 'llm.apiKeyNotNeeded',
+        AVAILABILITY_CHECK_TIMEOUT_LOCAL_API: 'llm.availabilityCheckTimeoutLocalApi',
+        AVAILABILITY_CHECK_TIMEOUT_OLLAMA: 'llm.availabilityCheckTimeoutOllama',
+        STREAM_POLLING_DELAY: 'llm.streamPollingDelay',
+        PROMPT_FORMAT_OLLAMA_SYSTEM_PREFIX: 'llm.promptFormatOllamaSystemPrefix',
+        PROMPT_FORMAT_OLLAMA_CODE_SUFFIX: 'llm.promptFormatOllamaCodeSuffix',
+        SSE_DATA_PREFIX: 'llm.sseDataPrefix',
+        SSE_DONE_MARKER: 'llm.sseDoneMarker'
+    },
+    VECTORIZATION: {
+        SUMMARIZE_PROMPT: 'vectorization.summarizePrompt',
+        ENABLE_ORIGIN: 'vectorization.enableOrigin',
+        ENABLE_SUMMARIZE: 'vectorization.enableSummarize',
+        ENABLE_VS_ORIGIN: 'vectorization.enableVsOrigin',
+        ENABLE_VS_SUMMARIZE: 'vectorization.enableVsSummarize',
+        MAX_TEXT_LENGTH: 'vectorization.maxTextLength',
+        TRUNCATE_MESSAGE: 'vectorization.truncateMessage'
+    }
+} as const;
 
-// Настройки суммаризации
-export const SUMMARIZE = {
-    MAX_TEXT_LENGTH: 10000, // ~2500-3000 токенов
-    TRUNCATE_MESSAGE: '\n\n[...текст обрезан для суммаризации...]'
+// Типы API (неизменяемые значения)
+export const API_TYPES = {
+    OPENAI: 'openai',
+    OLLAMA: 'ollama'
 } as const;
 
 // Настройки векторного индекса

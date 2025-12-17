@@ -5,6 +5,10 @@ import { VectorStorage, EmbeddingItem, EmbeddingType, EmbeddingKind } from '../s
 import { LanceDbStorage } from '../storage/implementations/lanceDbStorage';
 import { LLMService } from './llmService';
 import { FileStatusService, FileStatus } from './fileStatusService';
+import { CONFIG_KEYS } from '../constants';
+import { ConfigValidator } from '../utils/validators';
+import { ConfigReader } from '../utils/configReader';
+import * as vscode from 'vscode';
 
 /**
  * Сервис для работы с эмбеддингами файлов
@@ -286,9 +290,9 @@ export class EmbeddingService {
      */
     private async _summarizeText(text: string): Promise<string> {
         // Ограничиваем длину текста для суммаризации (чтобы не превышать лимиты токенов)
-        const maxLength = 10000; // Примерно 2500-3000 токенов
+        const maxLength = ConfigReader.getMaxTextLength(); // Примерно 2500-3000 токенов
         const textToSummarize = text.length > maxLength 
-            ? text.substring(0, maxLength) + '\n\n[...текст обрезан для суммаризации...]'
+            ? text.substring(0, maxLength) + ConfigReader.getTruncateMessage()
             : text;
 
         // Получаем промпт для суммаризации из настроек
@@ -1064,8 +1068,8 @@ export class EmbeddingService {
 
         // Используем кастомный провайдер
         if (config.provider === 'custom' || config.provider === 'local') {
-            const apiType = config.apiType || 'openai';
-            if (apiType === 'ollama') {
+            const apiType = config.apiType || ConfigReader.getApiTypeOpenai();
+            if (apiType === ConfigReader.getApiTypeOllama()) {
                 return await this._getOllamaEmbedding(text, config);
             } else {
                 return await this._getCustomProviderEmbedding(text, config);
@@ -1080,7 +1084,9 @@ export class EmbeddingService {
      * Получение эмбеддинга через Ollama
      */
     private async _getOllamaEmbedding(text: string, config: any): Promise<number[]> {
-        const localUrl = config.localUrl || 'http://localhost:11434';
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const localUrl = config.localUrl || defaultOllamaUrl;
         const model = config.embedderModel;
         const url = `${localUrl}/api/embeddings`;
 
@@ -1121,10 +1127,12 @@ export class EmbeddingService {
      * Получение эмбеддинга через кастомный провайдер (OpenAI-совместимый API)
      */
     private async _getCustomProviderEmbedding(text: string, config: any): Promise<number[]> {
-        const baseUrl = config.baseUrl || config.localUrl || 'http://localhost:1234';
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultLocalApiUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const baseUrl = config.baseUrl || config.localUrl || defaultLocalApiUrl;
         const model = config.embedderModel;
-        const apiKey = config.apiKey || 'not-needed';
-        const timeout = config.timeout || 30000;
+        const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
         
         // Используем OpenAI-совместимый endpoint для эмбеддингов
         const url = `${baseUrl}/v1/embeddings`;
@@ -1140,7 +1148,7 @@ export class EmbeddingService {
             };
 
             // Добавляем API ключ только если он указан и не пустой
-            if (apiKey && apiKey.trim() && apiKey !== 'not-needed') {
+            if (apiKey && apiKey.trim() && apiKey !== ConfigReader.getApiKeyNotNeeded()) {
                 headers['Authorization'] = `Bearer ${apiKey}`;
             }
 

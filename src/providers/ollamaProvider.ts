@@ -1,8 +1,11 @@
 import { LLMProvider, LLMConfig } from '../services/llmService';
 import fetch from 'node-fetch';
-import { DEFAULT_OLLAMA_URL, DEFAULT_TIMEOUT } from '../constants';
+import { CONFIG_KEYS } from '../constants';
 import { ApiErrorHandler } from '../utils/errorHandler';
 import { Logger } from '../utils/logger';
+import { ConfigValidator } from '../utils/validators';
+import { ConfigReader } from '../utils/configReader';
+import * as vscode from 'vscode';
 
 /**
  * Провайдер для работы с Ollama (локальные модели)
@@ -15,24 +18,28 @@ export class OllamaProvider implements LLMProvider {
      * Генерация кода через Ollama API
      */
     async generate(prompt: string, config: LLMConfig): Promise<string> {
-        const localUrl = config.localUrl || DEFAULT_OLLAMA_URL;
-        const model = config.model || 'llama2';
-        const timeout = config.timeout || DEFAULT_TIMEOUT;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const localUrl = config.localUrl || defaultOllamaUrl;
+        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelOllama());
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         // Формируем URL для Ollama API
         const url = `${localUrl}/api/generate`;
 
         // Подготовка промпта для генерации кода
         const systemPrompt = config.systemPrompt || '';
-        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
+        const fullPrompt = systemPrompt 
+            ? ConfigReader.formatOllamaPromptWithSystem(systemPrompt, prompt)
+            : ConfigReader.formatOllamaPromptWithoutSystem(prompt);
 
         const requestBody = {
             model: model,
             prompt: fullPrompt,
             stream: false,
             options: {
-                temperature: config.temperature || 0.7,
-                num_predict: config.maxTokens || 2000
+                temperature: ConfigValidator.validateTemperature(config.temperature),
+                num_predict: ConfigValidator.validateMaxTokens(config.maxTokens)
             }
         };
 
@@ -74,22 +81,26 @@ export class OllamaProvider implements LLMProvider {
      * Потоковая генерация кода через Ollama API
      */
     async *stream(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const localUrl = config.localUrl || DEFAULT_OLLAMA_URL;
-        const model = config.model || 'llama2';
-        const timeout = config.timeout || DEFAULT_TIMEOUT;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const localUrl = config.localUrl || defaultOllamaUrl;
+        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelOllama());
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         const url = `${localUrl}/api/generate`;
 
         const systemPrompt = config.systemPrompt || '';
-        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
+        const fullPrompt = systemPrompt 
+            ? ConfigReader.formatOllamaPromptWithSystem(systemPrompt, prompt)
+            : ConfigReader.formatOllamaPromptWithoutSystem(prompt);
 
         const requestBody = {
             model: model,
             prompt: fullPrompt,
             stream: true,
             options: {
-                temperature: config.temperature || 0.7,
-                num_predict: config.maxTokens || 2000
+                temperature: ConfigValidator.validateTemperature(config.temperature),
+                num_predict: ConfigValidator.validateMaxTokens(config.maxTokens)
             }
         };
 
@@ -166,7 +177,7 @@ export class OllamaProvider implements LLMProvider {
                     }
                 } else {
                     // Ждем новые данные
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise(resolve => setTimeout(resolve, ConfigReader.getStreamPollingDelay()));
                 }
             }
 
@@ -195,7 +206,7 @@ export class OllamaProvider implements LLMProvider {
         try {
             const url = `${localUrl}/api/tags`;
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            const timeoutId = setTimeout(() => controller.abort(), ConfigReader.getAvailabilityCheckTimeoutOllama());
             
             const response = await fetch(url, {
                 method: 'GET',
@@ -216,7 +227,7 @@ export class OllamaProvider implements LLMProvider {
         try {
             const url = `${localUrl}/api/tags`;
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            const timeoutId = setTimeout(() => controller.abort(), ConfigReader.getAvailabilityCheckTimeoutOllama());
             
             const response = await fetch(url, {
                 method: 'GET',

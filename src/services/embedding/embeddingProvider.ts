@@ -1,8 +1,11 @@
 import { LLMConfig } from '../llmService';
-import { DEFAULT_OLLAMA_URL, DEFAULT_LOCAL_API_URL, DEFAULT_TIMEOUT } from '../../constants';
+import { CONFIG_KEYS } from '../../constants';
 import { ApiErrorHandler } from '../../utils/errorHandler';
 import { Logger } from '../../utils/logger';
 import { EmbeddingError } from '../../errors';
+import { ConfigValidator } from '../../utils/validators';
+import { ConfigReader } from '../../utils/configReader';
+import * as vscode from 'vscode';
 
 /**
  * Интерфейс провайдера эмбеддингов
@@ -16,7 +19,9 @@ export interface EmbeddingProvider {
  */
 export class OllamaEmbeddingProvider implements EmbeddingProvider {
     async getEmbedding(text: string, config: LLMConfig): Promise<number[]> {
-        const localUrl = config.localUrl || DEFAULT_OLLAMA_URL;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const localUrl = config.localUrl || defaultOllamaUrl;
         const model = config.embedderModel || '';
         const url = `${localUrl}/api/embeddings`;
 
@@ -47,7 +52,8 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
             return data.embedding;
         } catch (error) {
             Logger.error('Ошибка получения эмбеддинга через Ollama', error as Error, { url, model });
-            ApiErrorHandler.handle(error, 'Ollama', config.timeout || DEFAULT_TIMEOUT, localUrl);
+            const timeout = ConfigValidator.validateTimeout(config.timeout);
+            ApiErrorHandler.handle(error, 'Ollama', timeout, localUrl);
             throw new EmbeddingError('Не удалось получить эмбеддинг через Ollama', error as Error);
         }
     }
@@ -58,10 +64,12 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
  */
 export class CustomEmbeddingProvider implements EmbeddingProvider {
     async getEmbedding(text: string, config: LLMConfig): Promise<number[]> {
-        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_LOCAL_API_URL;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultLocalApiUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const baseUrl = config.baseUrl || config.localUrl || defaultLocalApiUrl;
         const model = config.embedderModel || '';
-        const apiKey = config.apiKey || 'not-needed';
-        const timeout = config.timeout || DEFAULT_TIMEOUT;
+        const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
         
         const url = `${baseUrl}/v1/embeddings`;
 
@@ -75,7 +83,7 @@ export class CustomEmbeddingProvider implements EmbeddingProvider {
                 'Content-Type': 'application/json'
             };
 
-            if (apiKey && apiKey.trim() && apiKey !== 'not-needed') {
+            if (apiKey && apiKey.trim() && apiKey !== ConfigReader.getApiKeyNotNeeded()) {
                 headers['Authorization'] = `Bearer ${apiKey}`;
             }
 
@@ -125,8 +133,8 @@ export class EmbeddingProviderFactory {
         }
 
         if (config.provider === 'custom' || config.provider === 'local') {
-            const apiType = config.apiType || 'openai';
-            if (apiType === 'ollama') {
+            const apiType = config.apiType || ConfigReader.getApiTypeOpenai();
+            if (apiType === ConfigReader.getApiTypeOllama()) {
                 return new OllamaEmbeddingProvider();
             } else {
                 return new CustomEmbeddingProvider();

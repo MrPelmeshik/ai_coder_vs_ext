@@ -1,8 +1,11 @@
 import { LLMProvider, LLMConfig } from '../services/llmService';
 import fetch from 'node-fetch';
-import { DEFAULT_LOCAL_API_URL, DEFAULT_OLLAMA_URL, DEFAULT_TIMEOUT } from '../constants';
+import { CONFIG_KEYS } from '../constants';
 import { ApiErrorHandler } from '../utils/errorHandler';
 import { Logger } from '../utils/logger';
+import { ConfigValidator } from '../utils/validators';
+import { ConfigReader } from '../utils/configReader';
+import * as vscode from 'vscode';
 
 /**
  * Провайдер для работы с локальными API (LM Studio, локальные серверы и т.д.)
@@ -14,9 +17,9 @@ export class LocalApiProvider implements LLMProvider {
      * Генерация кода через локальный API
      */
     async generate(prompt: string, config: LLMConfig): Promise<string> {
-        const apiType = config.apiType || 'openai';
+        const apiType = config.apiType || ConfigReader.getApiTypeOpenai();
         
-        if (apiType === 'ollama') {
+        if (apiType === ConfigReader.getApiTypeOllama()) {
             return await this._generateOllamaLike(prompt, config);
         } else {
             return await this._generateOpenAILike(prompt, config);
@@ -27,10 +30,12 @@ export class LocalApiProvider implements LLMProvider {
      * Генерация через OpenAI-совместимый API
      */
     private async _generateOpenAILike(prompt: string, config: LLMConfig): Promise<string> {
-        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_LOCAL_API_URL;
-        const model = config.model || 'local-model';
-        const apiKey = config.apiKey || 'not-needed';
-        const timeout = config.timeout || DEFAULT_TIMEOUT;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultLocalApiUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const baseUrl = config.baseUrl || config.localUrl || defaultLocalApiUrl;
+        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelLocalApi());
+        const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         // Используем OpenAI-совместимый формат
         const url = `${baseUrl}/v1/chat/completions`;
@@ -54,8 +59,8 @@ export class LocalApiProvider implements LLMProvider {
         const requestBody = {
             model: model,
             messages: messages,
-            temperature: config.temperature || 0.7,
-            max_tokens: config.maxTokens || 2000,
+            temperature: ConfigValidator.validateTemperature(config.temperature),
+            max_tokens: ConfigValidator.validateMaxTokens(config.maxTokens),
             stream: false
         };
 
@@ -68,7 +73,7 @@ export class LocalApiProvider implements LLMProvider {
             };
 
             // Добавляем API ключ только если он указан и не пустой
-            if (apiKey && apiKey.trim() && apiKey !== 'not-needed') {
+            if (apiKey && apiKey.trim() && apiKey !== ConfigReader.getApiKeyNotNeeded()) {
                 headers['Authorization'] = `Bearer ${apiKey}`;
             }
 
@@ -109,23 +114,27 @@ export class LocalApiProvider implements LLMProvider {
      * Генерация через Ollama-совместимый API
      */
     private async _generateOllamaLike(prompt: string, config: LLMConfig): Promise<string> {
-        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_OLLAMA_URL;
-        const model = config.model || 'llama2';
-        const timeout = config.timeout || DEFAULT_TIMEOUT;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const baseUrl = config.baseUrl || config.localUrl || defaultOllamaUrl;
+        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelOllama());
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         // Используем Ollama-совместимый формат
         const url = `${baseUrl}/api/generate`;
 
         const systemPrompt = config.systemPrompt || '';
-        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
+        const fullPrompt = systemPrompt 
+            ? ConfigReader.formatOllamaPromptWithSystem(systemPrompt, prompt)
+            : ConfigReader.formatOllamaPromptWithoutSystem(prompt);
 
         const requestBody = {
             model: model,
             prompt: fullPrompt,
             stream: false,
             options: {
-                temperature: config.temperature || 0.7,
-                num_predict: config.maxTokens || 2000
+                temperature: ConfigValidator.validateTemperature(config.temperature),
+                num_predict: ConfigValidator.validateMaxTokens(config.maxTokens)
             }
         };
 
@@ -167,9 +176,9 @@ export class LocalApiProvider implements LLMProvider {
      * Потоковая генерация кода через локальный API
      */
     async *stream(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const apiType = config.apiType || 'openai';
+        const apiType = config.apiType || ConfigReader.getApiTypeOpenai();
         
-        if (apiType === 'ollama') {
+        if (apiType === ConfigReader.getApiTypeOllama()) {
             yield* this._streamOllamaLike(prompt, config);
         } else {
             yield* this._streamOpenAILike(prompt, config);
@@ -180,10 +189,12 @@ export class LocalApiProvider implements LLMProvider {
      * Потоковая генерация через OpenAI-совместимый API
      */
     private async *_streamOpenAILike(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_LOCAL_API_URL;
-        const model = config.model || 'local-model';
-        const apiKey = config.apiKey || 'not-needed';
-        const timeout = config.timeout || DEFAULT_TIMEOUT;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultLocalApiUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const baseUrl = config.baseUrl || config.localUrl || defaultLocalApiUrl;
+        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelLocalApi());
+        const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         const url = `${baseUrl}/v1/chat/completions`;
 
@@ -206,8 +217,8 @@ export class LocalApiProvider implements LLMProvider {
         const requestBody = {
             model: model,
             messages: messages,
-            temperature: config.temperature || 0.7,
-            max_tokens: config.maxTokens || 2000,
+            temperature: ConfigValidator.validateTemperature(config.temperature),
+            max_tokens: ConfigValidator.validateMaxTokens(config.maxTokens),
             stream: true
         };
 
@@ -219,7 +230,7 @@ export class LocalApiProvider implements LLMProvider {
                 'Content-Type': 'application/json'
             };
 
-            if (apiKey && apiKey.trim() && apiKey !== 'not-needed') {
+            if (apiKey && apiKey.trim() && apiKey !== ConfigReader.getApiKeyNotNeeded()) {
                 headers['Authorization'] = `Bearer ${apiKey}`;
             }
 
@@ -276,9 +287,10 @@ export class LocalApiProvider implements LLMProvider {
                     buffer = lines.pop() || '';
 
                     for (const line of lines) {
-                        if (line.trim() && line.startsWith('data: ')) {
-                            const dataStr = line.slice(6);
-                            if (dataStr === '[DONE]') {
+                        const dataPrefix = ConfigReader.getSseDataPrefix();
+                        if (line.trim() && line.startsWith(dataPrefix)) {
+                            const dataStr = line.slice(dataPrefix.length);
+                            if (dataStr === ConfigReader.getSseDoneMarker()) {
                                 continue;
                             }
                             try {
@@ -293,14 +305,15 @@ export class LocalApiProvider implements LLMProvider {
                     }
                 } else {
                     // Ждем новые данные
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise(resolve => setTimeout(resolve, ConfigReader.getStreamPollingDelay()));
                 }
             }
 
             // Обрабатываем оставшийся буфер
-            if (buffer.trim() && buffer.startsWith('data: ')) {
-                const dataStr = buffer.slice(6);
-                if (dataStr !== '[DONE]') {
+            const dataPrefix = ConfigReader.getSseDataPrefix();
+            if (buffer.trim() && buffer.startsWith(dataPrefix)) {
+                const dataStr = buffer.slice(dataPrefix.length);
+                if (dataStr !== ConfigReader.getSseDoneMarker()) {
                     try {
                         const data = JSON.parse(dataStr);
                         if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
@@ -322,22 +335,26 @@ export class LocalApiProvider implements LLMProvider {
      * Потоковая генерация через Ollama-совместимый API
      */
     private async *_streamOllamaLike(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const baseUrl = config.baseUrl || config.localUrl || DEFAULT_OLLAMA_URL;
-        const model = config.model || 'llama2';
-        const timeout = config.timeout || DEFAULT_TIMEOUT;
+        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
+        const baseUrl = config.baseUrl || config.localUrl || defaultOllamaUrl;
+        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelOllama());
+        const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         const url = `${baseUrl}/api/generate`;
 
         const systemPrompt = config.systemPrompt || '';
-        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
+        const fullPrompt = systemPrompt 
+            ? ConfigReader.formatOllamaPromptWithSystem(systemPrompt, prompt)
+            : ConfigReader.formatOllamaPromptWithoutSystem(prompt);
 
         const requestBody = {
             model: model,
             prompt: fullPrompt,
             stream: true,
             options: {
-                temperature: config.temperature || 0.7,
-                num_predict: config.maxTokens || 2000
+                temperature: ConfigValidator.validateTemperature(config.temperature),
+                num_predict: ConfigValidator.validateMaxTokens(config.maxTokens)
             }
         };
 
@@ -413,7 +430,7 @@ export class LocalApiProvider implements LLMProvider {
                     }
                 } else {
                     // Ждем новые данные
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await new Promise(resolve => setTimeout(resolve, ConfigReader.getStreamPollingDelay()));
                 }
             }
 
@@ -439,14 +456,14 @@ export class LocalApiProvider implements LLMProvider {
      * Проверка доступности локального API
      */
     async checkAvailability(baseUrl: string, apiType?: string): Promise<boolean> {
-        const type = apiType || 'openai';
+        const type = apiType || ConfigReader.getApiTypeOpenai();
         
         try {
-            if (type === 'ollama') {
+            if (type === ConfigReader.getApiTypeOllama()) {
                 // Для Ollama проверяем /api/tags
                 const tagsUrl = `${baseUrl}/api/tags`;
                 const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 3000);
+                const timeout = setTimeout(() => controller.abort(), ConfigReader.getAvailabilityCheckTimeoutOllama());
                 
                 try {
                     const response = await fetch(tagsUrl, {
@@ -467,7 +484,7 @@ export class LocalApiProvider implements LLMProvider {
                 // Пробуем health endpoint
                 try {
                     const healthController = new AbortController();
-                    const healthTimeout = setTimeout(() => healthController.abort(), 3000);
+                    const healthTimeout = setTimeout(() => healthController.abort(), ConfigReader.getAvailabilityCheckTimeoutLocalApi());
                     
                     const response = await fetch(healthUrl, {
                         method: 'GET',
@@ -484,7 +501,7 @@ export class LocalApiProvider implements LLMProvider {
 
                 // Пробуем models endpoint
                 const modelsController = new AbortController();
-                const modelsTimeout = setTimeout(() => modelsController.abort(), 3000);
+                const modelsTimeout = setTimeout(() => modelsController.abort(), ConfigReader.getAvailabilityCheckTimeoutLocalApi());
                 
                 const response = await fetch(modelsUrl, {
                     method: 'GET',

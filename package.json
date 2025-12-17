@@ -151,6 +151,67 @@
           "default": "",
           "description": "Системный промпт для LLM. Определяет роль и поведение модели."
         },
+        "aiCoder.llm.defaultModelOpenai": {
+          "type": "string",
+          "default": "gpt-4",
+          "description": "Дефолтная модель для OpenAI провайдера"
+        },
+        "aiCoder.llm.defaultModelOllama": {
+          "type": "string",
+          "default": "llama2",
+          "description": "Дефолтная модель для Ollama провайдера"
+        },
+        "aiCoder.llm.defaultModelLocalApi": {
+          "type": "string",
+          "default": "local-model",
+          "description": "Дефолтная модель для локального API провайдера"
+        },
+        "aiCoder.llm.apiKeyNotNeeded": {
+          "type": "string",
+          "default": "not-needed",
+          "description": "Значение API ключа, когда ключ не требуется"
+        },
+        "aiCoder.llm.availabilityCheckTimeoutLocalApi": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Таймаут проверки доступности локального API (мс)"
+        },
+        "aiCoder.llm.availabilityCheckTimeoutOllama": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Таймаут проверки доступности Ollama (мс)"
+        },
+        "aiCoder.llm.streamPollingDelay": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Задержка между проверками потока данных (мс)"
+        },
+        "aiCoder.llm.promptFormatOllamaSystemPrefix": {
+          "type": "string",
+          "default": "\n\nUser request: ",
+          "description": "Префикс для системного промпта Ollama"
+        },
+        "aiCoder.llm.promptFormatOllamaCodeSuffix": {
+          "type": "string",
+          "default": "\n\nCode:",
+          "description": "Суффикс для промпта генерации кода Ollama"
+        },
+        "aiCoder.llm.sseDataPrefix": {
+          "type": "string",
+          "default": "data: ",
+          "description": "Префикс для данных в SSE потоке"
+        },
+        "aiCoder.llm.sseDoneMarker": {
+          "type": "string",
+          "default": "[DONE]",
+          "description": "Маркер завершения SSE потока"
+        },
         "aiCoder.vectorization.summarizePrompt": {
           "type": "string",
           "default": "Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.",
@@ -175,6 +236,18 @@
           "type": "boolean",
           "default": true,
           "description": "Создавать векторы как сумму векторов по суммаризации вложений"
+        },
+        "aiCoder.vectorization.maxTextLength": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1000,
+          "maximum": 100000,
+          "description": "Максимальная длина текста для суммаризации (~2500-3000 токенов)"
+        },
+        "aiCoder.vectorization.truncateMessage": {
+          "type": "string",
+          "default": "\n\n[...текст обрезан для суммаризации...]",
+          "description": "Сообщение, добавляемое при обрезке текста для суммаризации"
         }
       }
     }

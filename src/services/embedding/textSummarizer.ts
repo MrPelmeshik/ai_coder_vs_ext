@@ -1,5 +1,5 @@
 import { LLMService } from '../llmService';
-import { SUMMARIZE } from '../../constants';
+import { ConfigReader } from '../../utils/configReader';
 import { Logger } from '../../utils/logger';
 import { VectorizationError } from '../../errors';
 
@@ -14,8 +14,9 @@ export class TextSummarizer {
      */
     async summarize(text: string, summarizePrompt?: string): Promise<string> {
         // Ограничиваем длину текста для суммаризации
-        const textToSummarize = text.length > SUMMARIZE.MAX_TEXT_LENGTH 
-            ? text.substring(0, SUMMARIZE.MAX_TEXT_LENGTH) + SUMMARIZE.TRUNCATE_MESSAGE
+        const maxLength = ConfigReader.getMaxTextLength();
+        const textToSummarize = text.length > maxLength 
+            ? text.substring(0, maxLength) + ConfigReader.getTruncateMessage()
             : text;
 
         const prompt = summarizePrompt 
@@ -23,7 +24,7 @@ export class TextSummarizer {
             : `Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.\n\n${textToSummarize}`;
 
         try {
-            const summary = await this._llmService.generateCode(prompt);
+            const summary = await this.llmService.generateCode(prompt);
             return summary.trim();
         } catch (error) {
             // Если суммаризация не удалась, используем оригинальный текст

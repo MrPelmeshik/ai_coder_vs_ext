@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { LocalApiProvider } from '../providers/localApiProvider';
 
-import { STORAGE_KEYS } from '../constants';
+import { STORAGE_KEYS, CONFIG_KEYS, API_TYPES } from '../constants';
 
 const API_KEY_SECRET_KEY = STORAGE_KEYS.API_KEY;
 
@@ -114,6 +114,7 @@ export class LLMService {
 
     /**
      * Загрузка конфигурации из настроек VS Code
+     * Все значения читаются из настроек без дефолтов в коде
      */
     private async _loadConfig(): Promise<LLMConfig> {
         const config = vscode.workspace.getConfiguration('aiCoder');
@@ -122,38 +123,39 @@ export class LLMService {
         const apiKey = await this._getApiKey();
         
         return {
-            provider: config.get<string>('llm.provider', 'openai'),
+            provider: config.get<string>(CONFIG_KEYS.LLM.PROVIDER)!,
             apiKey: apiKey || '',
-            model: config.get<string>('llm.model', 'gpt-4'),
-            embedderModel: config.get<string>('llm.embedderModel', ''),
-            temperature: config.get<number>('llm.temperature', 0.7),
-            maxTokens: config.get<number>('llm.maxTokens', 2000),
-            baseUrl: config.get<string>('llm.baseUrl', ''),
-            systemPrompt: config.get<string>('llm.systemPrompt', ''),
-            localUrl: config.get<string>('llm.localUrl', 'http://localhost:11434'),
-            timeout: config.get<number>('llm.timeout', 30000),
-            apiType: config.get<string>('llm.apiType', 'openai')
+            model: config.get<string>(CONFIG_KEYS.LLM.MODEL)!,
+            embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL) || '',
+            temperature: config.get<number>(CONFIG_KEYS.LLM.TEMPERATURE)!,
+            maxTokens: config.get<number>(CONFIG_KEYS.LLM.MAX_TOKENS)!,
+            baseUrl: config.get<string>(CONFIG_KEYS.LLM.BASE_URL) || '',
+            systemPrompt: config.get<string>(CONFIG_KEYS.LLM.SYSTEM_PROMPT) || '',
+            localUrl: config.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!,
+            timeout: config.get<number>(CONFIG_KEYS.LLM.TIMEOUT)!,
+            apiType: config.get<string>(CONFIG_KEYS.LLM.API_TYPE)!
         };
     }
 
     /**
      * Синхронная загрузка конфигурации (для совместимости)
+     * Все значения читаются из настроек без дефолтов в коде
      */
     private _loadConfigSync(): LLMConfig {
         const config = vscode.workspace.getConfiguration('aiCoder');
         
         return {
-            provider: config.get<string>('llm.provider', 'openai'),
+            provider: config.get<string>(CONFIG_KEYS.LLM.PROVIDER)!,
             apiKey: '', // Будет загружен асинхронно
-            model: config.get<string>('llm.model', 'gpt-4'),
-            embedderModel: config.get<string>('llm.embedderModel', ''),
-            temperature: config.get<number>('llm.temperature', 0.7),
-            maxTokens: config.get<number>('llm.maxTokens', 2000),
-            baseUrl: config.get<string>('llm.baseUrl', ''),
-            localUrl: config.get<string>('llm.localUrl', 'http://localhost:11434'),
-            timeout: config.get<number>('llm.timeout', 30000),
-            apiType: config.get<string>('llm.apiType', 'openai'),
-            systemPrompt: config.get<string>('llm.systemPrompt', '')
+            model: config.get<string>(CONFIG_KEYS.LLM.MODEL)!,
+            embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL) || '',
+            temperature: config.get<number>(CONFIG_KEYS.LLM.TEMPERATURE)!,
+            maxTokens: config.get<number>(CONFIG_KEYS.LLM.MAX_TOKENS)!,
+            baseUrl: config.get<string>(CONFIG_KEYS.LLM.BASE_URL) || '',
+            localUrl: config.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!,
+            timeout: config.get<number>(CONFIG_KEYS.LLM.TIMEOUT)!,
+            apiType: config.get<string>(CONFIG_KEYS.LLM.API_TYPE)!,
+            systemPrompt: config.get<string>(CONFIG_KEYS.LLM.SYSTEM_PROMPT) || ''
         };
     }
 
@@ -294,12 +296,12 @@ function generatedCode() {
         if (config.provider === 'ollama') {
             const provider = this._providers.get('ollama') as OllamaProvider;
             if (provider && typeof (provider as any).checkAvailability === 'function') {
-                return await (provider as any).checkAvailability(config.localUrl || 'http://localhost:11434');
+                return await (provider as any).checkAvailability(config.localUrl!);
             }
         } else if (config.provider === 'custom' || config.provider === 'local') {
             const provider = this._providers.get('local') as LocalApiProvider;
             if (provider && typeof (provider as any).checkAvailability === 'function') {
-                const url = config.baseUrl || config.localUrl || 'http://localhost:1234';
+                const url = config.baseUrl || config.localUrl!;
                 return await (provider as any).checkAvailability(url);
             }
         }
@@ -316,7 +318,7 @@ function generatedCode() {
         if (config.provider === 'ollama') {
             const provider = this._providers.get('ollama') as OllamaProvider;
             if (provider && typeof (provider as any).listModels === 'function') {
-                return await (provider as any).listModels(config.localUrl || 'http://localhost:11434');
+                return await (provider as any).listModels(config.localUrl!);
             }
         }
         
