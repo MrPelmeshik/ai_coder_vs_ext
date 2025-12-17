@@ -696,18 +696,42 @@
             return;
         }
 
+        // Функция для получения понятного названия типа
+        function getTypeLabel(type) {
+            const labels = {
+                'file': '📄 Файл',
+                'directory': '📁 Директория',
+                'chunk': '📝 Фрагмент'
+            };
+            return labels[type] || type;
+        }
+
+        // Функция для получения понятного названия kind
+        function getKindLabel(kind) {
+            const labels = {
+                'origin': 'Оригинальный текст',
+                'summarize': 'Суммаризация по оригинальному тексту',
+                'vs_origin': 'Сумма векторов по оригинальному тексту вложений',
+                'vs_summarize': 'Сумма векторов по суммаризации вложений'
+            };
+            return labels[kind] || kind;
+        }
+
         let html = '<ul class="search-results-list">';
         results.forEach((result, index) => {
             const similarityPercent = (result.similarity * 100).toFixed(1);
-            const typeLabel = result.type === 'file' ? '📄' : result.type === 'directory' ? '📁' : '📝';
+            const typeLabel = getTypeLabel(result.type);
+            const kindLabel = getKindLabel(result.kind);
             html += `
                 <li class="search-result-item" data-path="${escapeHtml(result.path)}" data-type="${result.type}">
                     <div class="search-result-header">
-                        <span class="search-result-type">${typeLabel}</span>
+                        <div class="search-result-type-badge">${typeLabel}</div>
                         <span class="search-result-similarity">${similarityPercent}%</span>
                     </div>
                     <div class="search-result-path">${escapeHtml(result.path)}</div>
-                    <div class="search-result-kind">Тип: ${result.kind}</div>
+                    <div class="search-result-meta">
+                        <span class="search-result-kind-badge" title="${kindLabel}">${kindLabel}</span>
+                    </div>
                 </li>
             `;
         });

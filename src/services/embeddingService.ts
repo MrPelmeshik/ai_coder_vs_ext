@@ -39,6 +39,7 @@ export class EmbeddingService {
 
     /**
      * Векторизация всех необработанных файлов и директорий
+     * Обработка идет от элементов с максимальной вложенностью к корню дерева
      */
     async vectorizeAllUnprocessed(workspaceFolder?: vscode.WorkspaceFolder): Promise<{ processed: number; errors: number }> {
         if (this._isProcessing) {
@@ -63,17 +64,228 @@ export class EmbeddingService {
                 throw new Error('Модель эмбеддинга не настроена. Укажите модель в настройках.');
             }
 
-            // Рекурсивная обработка файлов и директорий
-            await this._processDirectory(rootPath, null, config.embedderModel, folder, (processedCount, errorCount) => {
-                processed = processedCount;
-                errors = errorCount;
-            });
+            // Собираем все элементы с их глубиной вложенности
+            const itemsToProcess: Array<{
+                path: string;
+                type: 'file' | 'directory';
+                depth: number;
+                parentPath: string | null;
+            }> = [];
+
+            // Рекурсивно собираем все файлы и директории
+            await this._collectItems(rootPath, null, 0, itemsToProcess);
+
+            // Сортируем по глубине: сначала самые глубокие (максимальная вложенность)
+            itemsToProcess.sort((a, b) => b.depth - a.depth);
+
+            // Обрабатываем элементы в порядке от максимальной вложенности к корню
+            for (const item of itemsToProcess) {
+                try {
+                    if (item.type === 'file') {
+                        await this._processFileItem(item.path, item.parentPath, config.embedderModel, folder, (processedCount: number, errorCount: number) => {
+                            processed += processedCount;
+                            errors += errorCount;
+                        });
+                    } else {
+                        await this._processDirectoryItem(item.path, item.parentPath, config.embedderModel, folder, (processedCount: number, errorCount: number) => {
+                            processed += processedCount;
+                            errors += errorCount;
+                        });
+                    }
+                } catch (error) {
+                    errors++;
+                    console.error(`Ошибка обработки ${item.type} ${item.path}:`, error);
+                }
+            }
 
         } finally {
             this._isProcessing = false;
         }
 
         return { processed, errors };
+    }
+
+    /**
+     * Рекурсивный сбор всех файлов и директорий с их глубиной вложенности
+     */
+    private async _collectItems(
+        dirPath: string,
+        parentPath: string | null,
+        depth: number,
+        items: Array<{ path: string; type: 'file' | 'directory'; depth: number; parentPath: string | null }>
+    ): Promise<void> {
+        try {
+            const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+            
+            for (const entry of entries) {
+                const itemPath = path.join(dirPath, entry.name);
+                
+                if (entry.isFile()) {
+                    items.push({
+                        path: itemPath,
+                        type: 'file',
+                        depth: depth,
+                        parentPath: parentPath
+                    });
+                } else if (entry.isDirectory()) {
+                    // Пропускаем служебные директории
+                    if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+                        continue;
+                    }
+                    
+                    // Добавляем директорию в список
+                    items.push({
+                        path: itemPath,
+                        type: 'directory',
+                        depth: depth,
+                        parentPath: parentPath
+                    });
+                    
+                    // Рекурсивно собираем элементы из поддиректории
+                    await this._collectItems(itemPath, itemPath, depth + 1, items);
+                }
+            }
+        } catch (error) {
+            console.error(`Ошибка сбора элементов из ${dirPath}:`, error);
+        }
+    }
+
+    /**
+     * Обработка отдельного файла
+     */
+    private async _processFileItem(
+        filePath: string,
+        parentPath: string | null,
+        embedderModel: string,
+        workspaceFolder: vscode.WorkspaceFolder,
+        onProgress: (processed: number, errors: number) => void
+    ): Promise<void> {
+        const fileUri = vscode.Uri.file(filePath);
+        const currentStatus = await this._fileStatusService.getFileStatus(fileUri);
+        
+        // Пропускаем исключенные файлы
+        if (currentStatus === FileStatus.EXCLUDED) {
+            return;
+        }
+
+        // Проверяем, обработан ли уже файл
+        if (await this._storage.exists(filePath, 'origin')) {
+            return;
+        }
+
+        // Находим parentId по parentPath
+        let parentId: string | null = null;
+        if (parentPath) {
+            const parentItems = await this._storage.getByPath(parentPath);
+            if (parentItems.length > 0) {
+                parentId = parentItems[0].id;
+            }
+        }
+
+        // Удаляем старые записи из БД перед обработкой
+        const existingItems = await this._storage.getByPath(filePath);
+        for (const item of existingItems) {
+            await this._storage.deleteEmbedding(item.id);
+        }
+
+        // Помечаем файл как обрабатывается (временно)
+        this._fileStatusService.setFileStatus(fileUri, FileStatus.PROCESSING);
+
+        try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const vector = await this._getEmbedding(content);
+            
+            const item: EmbeddingItem = {
+                id: this._generateGuid(),
+                type: 'file',
+                parent: parentId,
+                childs: [],
+                path: filePath,
+                kind: 'origin',
+                raw: content,
+                vector: vector
+            };
+
+            await this._storage.addEmbedding(item);
+            
+            // Убираем статус PROCESSING
+            this._fileStatusService.clearProcessingStatus(fileUri);
+            onProgress(1, 0);
+        } catch (error) {
+            this._fileStatusService.clearProcessingStatus(fileUri);
+            throw error;
+        }
+    }
+
+    /**
+     * Обработка отдельной директории
+     */
+    private async _processDirectoryItem(
+        dirPath: string,
+        parentPath: string | null,
+        embedderModel: string,
+        workspaceFolder: vscode.WorkspaceFolder,
+        onProgress: (processed: number, errors: number) => void
+    ): Promise<void> {
+        const dirUri = vscode.Uri.file(dirPath);
+        const currentStatus = await this._fileStatusService.getFileStatus(dirUri);
+        
+        // Пропускаем исключенные директории
+        if (currentStatus === FileStatus.EXCLUDED) {
+            return;
+        }
+
+        // Проверяем, обработана ли уже директория
+        if (await this._storage.exists(dirPath, 'origin')) {
+            return;
+        }
+
+        // Находим parentId по parentPath
+        let parentId: string | null = null;
+        if (parentPath) {
+            const parentItems = await this._storage.getByPath(parentPath);
+            if (parentItems.length > 0) {
+                parentId = parentItems[0].id;
+            }
+        }
+
+        // Удаляем старые записи из БД перед обработкой
+        const existingItems = await this._storage.getByPath(dirPath);
+        for (const item of existingItems) {
+            await this._storage.deleteEmbedding(item.id);
+        }
+
+        // Помечаем директорию как обрабатывается (временно)
+        this._fileStatusService.setFileStatus(dirUri, FileStatus.PROCESSING);
+
+        try {
+            // Создаем запись для директории
+            const files = fs.readdirSync(dirPath, { withFileTypes: true });
+            const fileNames = files.filter(f => f.isFile()).map(f => f.name);
+            const description = `Директория содержит ${fileNames.length} файлов: ${fileNames.join(', ')}`;
+            
+            const vector = await this._getEmbedding(description);
+            
+            const dirItem: EmbeddingItem = {
+                id: this._generateGuid(),
+                type: 'directory',
+                parent: parentId,
+                childs: [],
+                path: dirPath,
+                kind: 'origin',
+                raw: { description, files: fileNames },
+                vector: vector
+            };
+
+            await this._storage.addEmbedding(dirItem);
+            
+            // Убираем статус PROCESSING
+            this._fileStatusService.clearProcessingStatus(dirUri);
+            onProgress(1, 0);
+        } catch (error) {
+            this._fileStatusService.clearProcessingStatus(dirUri);
+            throw error;
+        }
     }
 
     /**
