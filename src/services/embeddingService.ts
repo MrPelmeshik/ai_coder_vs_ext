@@ -81,6 +81,11 @@ export class EmbeddingService {
             // Обрабатываем элементы в порядке от максимальной вложенности к корню
             for (const item of itemsToProcess) {
                 try {
+                    // Пропускаем корневую директорию (depth === 0 и type === 'directory')
+                    if (item.type === 'directory' && item.depth === 0) {
+                        continue;
+                    }
+
                     if (item.type === 'file') {
                         await this._processFileItem(item.path, item.parentPath, config.embedderModel, folder, (processedCount: number, errorCount: number) => {
                             processed += processedCount;
@@ -169,13 +174,34 @@ export class EmbeddingService {
             return;
         }
 
-        // Проверяем, обработан ли уже файл (проверяем оба вида векторов)
+        // Получаем настройки включения/отключения типов векторов
+        const config = vscode.workspace.getConfiguration('aiCoder');
+        const enableOrigin = config.get<boolean>('vectorization.enableOrigin', true);
+        const enableSummarize = config.get<boolean>('vectorization.enableSummarize', true);
+
+        // Проверяем, какие векторы уже существуют
         const hasOrigin = await this._storage.exists(filePath, 'origin');
         const hasSummarize = await this._storage.exists(filePath, 'summarize');
         
-        // Если оба вектора уже существуют, пропускаем
-        if (hasOrigin && hasSummarize) {
-            return;
+        // Определяем, какие векторы нужно создать
+        const needsOrigin = enableOrigin && !hasOrigin;
+        const needsSummarize = enableSummarize && !hasSummarize;
+        
+        // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
+        if (!needsOrigin && !needsSummarize) {
+            // Проверяем, нужно ли удалить векторы, для которых флаги выключены
+            const existingItems = await this._storage.getByPath(filePath);
+            let hasItemsToDelete = false;
+            for (const item of existingItems) {
+                if ((!enableOrigin && item.kind === 'origin') ||
+                    (!enableSummarize && item.kind === 'summarize')) {
+                    hasItemsToDelete = true;
+                    break;
+                }
+            }
+            if (!hasItemsToDelete) {
+                return;
+            }
         }
 
         // Находим parentId по parentPath
@@ -187,10 +213,17 @@ export class EmbeddingService {
             }
         }
 
-        // Удаляем старые записи из БД перед обработкой
+        // Удаляем векторы, которые нужно пересоздать или которые отключены
         const existingItems = await this._storage.getByPath(filePath);
         for (const item of existingItems) {
-            await this._storage.deleteEmbedding(item.id);
+            // Удаляем, если нужно пересоздать (флаг включен, но вектора нет или нужно обновить)
+            // ИЛИ если флаг выключен, но вектор существует
+            if ((needsOrigin && item.kind === 'origin') ||
+                (needsSummarize && item.kind === 'summarize') ||
+                (!enableOrigin && item.kind === 'origin') ||
+                (!enableSummarize && item.kind === 'summarize')) {
+                await this._storage.deleteEmbedding(item.id);
+            }
         }
 
         // Помечаем файл как обрабатывается (временно)
@@ -200,15 +233,8 @@ export class EmbeddingService {
             const content = fs.readFileSync(filePath, 'utf-8');
             let processedCount = 0;
 
-            // Получаем настройки включения/отключения типов векторов
-            const config = vscode.workspace.getConfiguration('aiCoder');
-            const enableOrigin = config.get<boolean>('vectorization.enableOrigin', true);
-            const enableSummarize = config.get<boolean>('vectorization.enableSummarize', true);
-            const enableVsOrigin = config.get<boolean>('vectorization.enableVsOrigin', false);
-            const enableVsSummarize = config.get<boolean>('vectorization.enableVsSummarize', false);
-
-            // 1. Создаем вектор по оригинальному тексту
-            if (enableOrigin && !hasOrigin) {
+            // 1. Создаем вектор по оригинальному тексту (если enableOrigin включен)
+            if (needsOrigin) {
                 const originVector = await this._getEmbedding(content);
                 
                 const originItem: EmbeddingItem = {
@@ -226,8 +252,8 @@ export class EmbeddingService {
                 processedCount++;
             }
 
-            // 2. Создаем вектор по суммаризации текста
-            if (enableSummarize && !hasSummarize) {
+            // 2. Создаем вектор по суммаризации текста (если enableSummarize включен)
+            if (needsSummarize) {
                 const summary = await this._summarizeText(content);
                 const summarizeVector = await this._getEmbedding(summary);
                 
@@ -244,26 +270,6 @@ export class EmbeddingService {
 
                 await this._storage.addEmbedding(summarizeItem);
                 processedCount++;
-            }
-
-            // 3. Создаем вектор как сумму векторов по оригинальному тексту вложений (vs_origin)
-            if (enableVsOrigin) {
-                const hasVsOrigin = await this._storage.exists(filePath, 'vs_origin');
-                if (!hasVsOrigin) {
-                    // TODO: Реализовать логику суммирования векторов вложений
-                    // Пока пропускаем, так как это требует дополнительной логики
-                    console.log(`vs_origin для ${filePath} пока не реализован`);
-                }
-            }
-
-            // 4. Создаем вектор как сумму векторов по суммаризации вложений (vs_summarize)
-            if (enableVsSummarize) {
-                const hasVsSummarize = await this._storage.exists(filePath, 'vs_summarize');
-                if (!hasVsSummarize) {
-                    // TODO: Реализовать логику суммирования векторов вложений
-                    // Пока пропускаем, так как это требует дополнительной логики
-                    console.log(`vs_summarize для ${filePath} пока не реализован`);
-                }
             }
             
             // Убираем статус PROCESSING
@@ -287,8 +293,7 @@ export class EmbeddingService {
 
         // Получаем промпт для суммаризации из настроек
         const config = vscode.workspace.getConfiguration('aiCoder');
-        const summarizePromptTemplate = config.get<string>('vectorization.summarizePrompt', 
-            'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.');
+        const summarizePromptTemplate = config.get<string>('vectorization.summarizePrompt', '');
 
         const prompt = `${summarizePromptTemplate}\n\n${textToSummarize}`;
 
@@ -300,6 +305,81 @@ export class EmbeddingService {
             console.warn(`Не удалось создать суммаризацию, используется оригинальный текст:`, error);
             return textToSummarize;
         }
+    }
+
+    /**
+     * Суммирование векторов
+     */
+    private _sumVectors(vectors: number[][]): number[] {
+        if (vectors.length === 0) {
+            return [];
+        }
+
+        const dimension = vectors[0].length;
+        const sum = new Array(dimension).fill(0);
+
+        for (const vector of vectors) {
+            if (vector.length !== dimension) {
+                console.warn(`Размерность вектора не совпадает: ожидается ${dimension}, получено ${vector.length}`);
+                continue;
+            }
+            for (let i = 0; i < dimension; i++) {
+                sum[i] += vector[i];
+            }
+        }
+
+        return sum;
+    }
+
+    /**
+     * Получение всех вложенных элементов директории (рекурсивно)
+     */
+    private async _getNestedItems(dirPath: string): Promise<EmbeddingItem[]> {
+        const nestedItems: EmbeddingItem[] = [];
+        const normalizedDirPath = path.normalize(dirPath);
+
+        try {
+            // Рекурсивно обходим все файлы и директории
+            const walkDir = async (currentPath: string) => {
+                try {
+                    const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+                    
+                    for (const entry of entries) {
+                        const fullPath = path.join(currentPath, entry.name);
+                        const normalizedFullPath = path.normalize(fullPath);
+                        
+                        // Пропускаем служебные директории
+                        if (entry.isDirectory() && (entry.name.startsWith('.') || entry.name === 'node_modules')) {
+                            continue;
+                        }
+
+                        // Исключаем саму директорию (на случай, если она попала в обход)
+                        if (normalizedFullPath === normalizedDirPath) {
+                            continue;
+                        }
+
+                        // Получаем все векторы для этого элемента из БД
+                        const items = await this._storage.getByPath(fullPath);
+                        if (items.length > 0) {
+                            nestedItems.push(...items);
+                        }
+
+                        // Рекурсивно обходим поддиректории
+                        if (entry.isDirectory()) {
+                            await walkDir(fullPath);
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`Ошибка при обходе директории ${currentPath}:`, error);
+                }
+            };
+
+            await walkDir(dirPath);
+        } catch (error) {
+            console.warn(`Ошибка при получении вложенных элементов для ${dirPath}:`, error);
+        }
+
+        return nestedItems;
     }
 
     /**
@@ -320,11 +400,6 @@ export class EmbeddingService {
             return;
         }
 
-        // Проверяем, обработана ли уже директория
-        if (await this._storage.exists(dirPath, 'origin')) {
-            return;
-        }
-
         // Находим parentId по parentPath
         let parentId: string | null = null;
         if (parentPath) {
@@ -334,39 +409,218 @@ export class EmbeddingService {
             }
         }
 
-        // Удаляем старые записи из БД перед обработкой
+        // Получаем настройки включения/отключения типов векторов
+        const config = vscode.workspace.getConfiguration('aiCoder');
+        const enableOrigin = config.get<boolean>('vectorization.enableOrigin', true);
+        const enableSummarize = config.get<boolean>('vectorization.enableSummarize', true);
+        const enableVsOrigin = config.get<boolean>('vectorization.enableVsOrigin', true);
+        const enableVsSummarize = config.get<boolean>('vectorization.enableVsSummarize', true);
+
+        // Проверяем, какие векторы уже существуют
+        const hasOrigin = await this._storage.exists(dirPath, 'origin');
+        const hasVsOrigin = await this._storage.exists(dirPath, 'vs_origin');
+        const hasVsSummarize = await this._storage.exists(dirPath, 'vs_summarize');
+
+        // Определяем, какие векторы нужно создать
+        const needsOrigin = enableOrigin && !hasOrigin;
+        const needsVsOrigin = enableVsOrigin && !hasVsOrigin;
+        const needsVsSummarize = enableVsSummarize && !hasVsSummarize;
+
+        // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
+        if (!needsOrigin && !needsVsOrigin && !needsVsSummarize) {
+            // Проверяем, нужно ли удалить векторы, для которых флаги выключены
+            const existingItems = await this._storage.getByPath(dirPath);
+            let hasItemsToDelete = false;
+            for (const item of existingItems) {
+                if ((!enableOrigin && item.kind === 'origin') ||
+                    (!enableVsOrigin && item.kind === 'vs_origin') ||
+                    (!enableVsSummarize && item.kind === 'vs_summarize')) {
+                    hasItemsToDelete = true;
+                    break;
+                }
+            }
+            if (!hasItemsToDelete) {
+                return;
+            }
+        }
+
+        // Удаляем векторы, которые нужно пересоздать или которые отключены
         const existingItems = await this._storage.getByPath(dirPath);
         for (const item of existingItems) {
-            await this._storage.deleteEmbedding(item.id);
+            // Удаляем, если нужно пересоздать (флаг включен, но вектора нет)
+            // ИЛИ если флаг выключен, но вектор существует
+            if ((needsOrigin && item.kind === 'origin') ||
+                (needsVsOrigin && item.kind === 'vs_origin') ||
+                (needsVsSummarize && item.kind === 'vs_summarize') ||
+                (!enableOrigin && item.kind === 'origin') ||
+                (!enableVsOrigin && item.kind === 'vs_origin') ||
+                (!enableVsSummarize && item.kind === 'vs_summarize')) {
+                await this._storage.deleteEmbedding(item.id);
+            }
         }
 
         // Помечаем директорию как обрабатывается (временно)
         this._fileStatusService.setFileStatus(dirUri, FileStatus.PROCESSING);
 
         try {
-            // Создаем запись для директории
-            const files = fs.readdirSync(dirPath, { withFileTypes: true });
-            const fileNames = files.filter(f => f.isFile()).map(f => f.name);
-            const description = `Директория содержит ${fileNames.length} файлов: ${fileNames.join(', ')}`;
-            
-            const vector = await this._getEmbedding(description);
-            
-            const dirItem: EmbeddingItem = {
-                id: this._generateGuid(),
-                type: 'directory',
-                parent: parentId,
-                childs: [],
-                path: dirPath,
-                kind: 'origin',
-                raw: { description, files: fileNames },
-                vector: vector
-            };
+            let processedCount = 0;
 
-            await this._storage.addEmbedding(dirItem);
+            // 1. Создаем запись для директории (origin)
+            if (needsOrigin) {
+                const files = fs.readdirSync(dirPath, { withFileTypes: true });
+                const fileNames = files.filter(f => f.isFile()).map(f => f.name);
+                const description = `Директория содержит ${fileNames.length} файлов: ${fileNames.join(', ')}`;
+                
+                const vector = await this._getEmbedding(description);
+                
+                const dirItem: EmbeddingItem = {
+                    id: this._generateGuid(),
+                    type: 'directory',
+                    parent: parentId,
+                    childs: [],
+                    path: dirPath,
+                    kind: 'origin',
+                    raw: { description, files: fileNames },
+                    vector: vector
+                };
+
+                await this._storage.addEmbedding(dirItem);
+                processedCount++;
+            }
+
+            // 2. Создаем вектор vs_origin (сумма всех origin векторов вложений: файлов и директорий)
+            if (needsVsOrigin) {
+                // Получаем все вложенные элементы
+                const nestedItems = await this._getNestedItems(dirPath);
+                
+                // Фильтруем векторы: origin для файлов и vs_origin для директорий (исключаем саму директорию)
+                const normalizedDirPath = path.normalize(dirPath);
+                const filteredItems = nestedItems.filter(item => {
+                    const normalizedItemPath = path.normalize(item.path);
+                    
+                    // Исключаем саму директорию
+                    if (normalizedItemPath === normalizedDirPath) {
+                        return false;
+                    }
+                    
+                    // Проверяем, что элемент действительно вложен в эту директорию
+                    if (!normalizedItemPath.startsWith(normalizedDirPath + path.sep)) {
+                        return false;
+                    }
+                    
+                    // Для файлов берем origin, для директорий берем vs_origin
+                    if (item.type === 'file') {
+                        return item.kind === 'origin';
+                    } else if (item.type === 'directory') {
+                        return item.kind === 'vs_origin';
+                    }
+                    return false;
+                });
+
+                // Извлекаем векторы
+                const vectors = filteredItems.map((item: EmbeddingItem) => {
+                    const vector = item.vector;
+                    if (!vector || !Array.isArray(vector) || vector.length === 0) {
+                        return null;
+                    }
+                    return vector;
+                });
+
+                const originVectors = vectors.filter((v: number[] | null): v is number[] => v !== null && v.length > 0);
+
+                if (originVectors.length > 0) {
+                    // Суммируем векторы
+                    const sumVector = this._sumVectors(originVectors);
+                    
+                    const vsOriginItem: EmbeddingItem = {
+                        id: this._generateGuid(),
+                        type: 'directory',
+                        parent: parentId,
+                        childs: [],
+                        path: dirPath,
+                        kind: 'vs_origin',
+                        raw: { 
+                            description: `Сумма ${originVectors.length} векторов: origin файлов и vs_origin директорий`,
+                            count: originVectors.length
+                        },
+                        vector: sumVector
+                    };
+
+                    await this._storage.addEmbedding(vsOriginItem);
+                    processedCount++;
+                } else if (nestedItems.length > 0) {
+                    console.warn(`[vs_origin] Нет вложенных элементов с векторами origin/vs_origin для директории ${dirPath}`);
+                }
+            }
+
+            // 3. Создаем вектор vs_summarize (сумма всех summarize векторов вложений: файлов и директорий)
+            if (needsVsSummarize) {
+                // Получаем все вложенные элементы
+                const nestedItems = await this._getNestedItems(dirPath);
+                
+                // Фильтруем векторы: summarize для файлов и vs_summarize для директорий (исключаем саму директорию)
+                const normalizedDirPath2 = path.normalize(dirPath);
+                const filteredItems2 = nestedItems.filter(item => {
+                    const normalizedItemPath = path.normalize(item.path);
+                    
+                    // Исключаем саму директорию
+                    if (normalizedItemPath === normalizedDirPath2) {
+                        return false;
+                    }
+                    
+                    // Проверяем, что элемент действительно вложен в эту директорию
+                    if (!normalizedItemPath.startsWith(normalizedDirPath2 + path.sep)) {
+                        return false;
+                    }
+                    
+                    // Для файлов берем summarize, для директорий берем vs_summarize
+                    if (item.type === 'file') {
+                        return item.kind === 'summarize';
+                    } else if (item.type === 'directory') {
+                        return item.kind === 'vs_summarize';
+                    }
+                    return false;
+                });
+
+                // Извлекаем векторы
+                const vectors2 = filteredItems2.map((item: EmbeddingItem) => {
+                    const vector = item.vector;
+                    if (!vector || !Array.isArray(vector) || vector.length === 0) {
+                        return null;
+                    }
+                    return vector;
+                });
+
+                const summarizeVectors = vectors2.filter((v: number[] | null): v is number[] => v !== null && v.length > 0);
+
+                if (summarizeVectors.length > 0) {
+                    // Суммируем векторы
+                    const sumVector = this._sumVectors(summarizeVectors);
+                    
+                    const vsSummarizeItem: EmbeddingItem = {
+                        id: this._generateGuid(),
+                        type: 'directory',
+                        parent: parentId,
+                        childs: [],
+                        path: dirPath,
+                        kind: 'vs_summarize',
+                        raw: { 
+                            description: `Сумма ${summarizeVectors.length} векторов: summarize файлов и vs_summarize директорий`,
+                            count: summarizeVectors.length
+                        },
+                        vector: sumVector
+                    };
+
+                    await this._storage.addEmbedding(vsSummarizeItem);
+                    processedCount++;
+                } else if (nestedItems.length > 0) {
+                    console.warn(`[vs_summarize] Нет вложенных элементов с векторами summarize/vs_summarize для директории ${dirPath}`);
+                }
+            }
             
             // Убираем статус PROCESSING
             this._fileStatusService.clearProcessingStatus(dirUri);
-            onProgress(1, 0);
+            onProgress(processedCount, 0);
         } catch (error) {
             this._fileStatusService.clearProcessingStatus(dirUri);
             throw error;
@@ -410,8 +664,6 @@ export class EmbeddingService {
                 const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
                 const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin', true);
                 const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize', true);
-                const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin', false);
-                const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize', false);
 
                 // Создаем вектор по оригинальному тексту
                 if (enableOrigin && !hasOrigin) {
@@ -450,10 +702,7 @@ export class EmbeddingService {
                     lastItemId = await this._storage.addEmbedding(summarizeItem);
                 }
 
-                // TODO: Реализовать vs_origin и vs_summarize
-                if (enableVsOrigin || enableVsSummarize) {
-                    console.log(`vs_origin и vs_summarize для ${filePath} пока не реализованы`);
-                }
+                // vs_origin и vs_summarize актуальны только для директорий, не для файлов
 
                 // Убираем статус PROCESSING
                 this._fileStatusService.clearProcessingStatus(fileUri);
@@ -591,6 +840,21 @@ export class EmbeddingService {
             similarity: r.similarity,
             kind: r.item.kind,
             raw: r.item.raw
+        }));
+    }
+
+    /**
+     * Получение всех записей из хранилища
+     */
+    async getAllItems(limit?: number): Promise<any[]> {
+        const items = await this._storage.getAllItems(limit);
+        
+        return items.map(item => ({
+            path: item.path,
+            type: item.type,
+            similarity: 1.0, // Для всех записей similarity = 1.0 (100%)
+            kind: item.kind,
+            raw: item.raw
         }));
     }
 

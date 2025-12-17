@@ -443,6 +443,33 @@ export class LanceDbStorage implements VectorStorage {
     }
 
     /**
+     * Получение всех записей из хранилища
+     */
+    async getAllItems(limit?: number): Promise<EmbeddingItem[]> {
+        await this.ensureInitialized();
+
+        // Проверяем, что таблица существует
+        if (!this.table) {
+            return [];
+        }
+
+        try {
+            let query = this.table.query();
+            
+            if (limit && limit > 0) {
+                query = query.limit(limit);
+            }
+            
+            const results = await query.toArray();
+            
+            return results.map((item: any) => this._deserializeItem(item));
+        } catch (error) {
+            console.error('Ошибка получения всех записей:', error);
+            return [];
+        }
+    }
+
+    /**
      * Получение количества записей в хранилище
      */
     async getCount(): Promise<number> {

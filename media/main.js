@@ -101,6 +101,13 @@
                     requestStorageCount();
                 }
             }
+            
+            // При открытии вкладки поиска загружаем все записи
+            if (targetTab === 'search') {
+                vscode.postMessage({
+                    command: 'getAllItems'
+                });
+            }
         });
     });
 
@@ -348,8 +355,8 @@
             summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
             enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
             enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : true,
-            enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : false,
-            enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : false,
+            enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
+            enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
             temperature: parseFloat(temperatureInput.value),
             maxTokens: parseInt(maxTokensInput.value),
             baseUrl: baseUrlInput.value.trim(),
@@ -403,10 +410,10 @@
                 enableSummarizeCheckbox.checked = true;
             }
             if (enableVsOriginCheckbox) {
-                enableVsOriginCheckbox.checked = false;
+                enableVsOriginCheckbox.checked = true;
             }
             if (enableVsSummarizeCheckbox) {
-                enableVsSummarizeCheckbox.checked = false;
+                enableVsSummarizeCheckbox.checked = true;
             }
             temperatureInput.value = '0.7';
             temperatureValue.textContent = '0.7';
@@ -424,8 +431,8 @@
                 summarizePrompt: '',
                 enableOrigin: true,
                 enableSummarize: true,
-                enableVsOrigin: false,
-                enableVsSummarize: false,
+                enableVsOrigin: true,
+                enableVsSummarize: true,
                 temperature: 0.7,
                 maxTokens: 2000,
                 baseUrl: '',
@@ -633,10 +640,10 @@
             enableSummarizeCheckbox.checked = config.enableSummarize !== undefined ? config.enableSummarize : true;
         }
         if (enableVsOriginCheckbox) {
-            enableVsOriginCheckbox.checked = config.enableVsOrigin !== undefined ? config.enableVsOrigin : false;
+            enableVsOriginCheckbox.checked = config.enableVsOrigin !== undefined ? config.enableVsOrigin : true;
         }
         if (enableVsSummarizeCheckbox) {
-            enableVsSummarizeCheckbox.checked = config.enableVsSummarize !== undefined ? config.enableVsSummarize : false;
+            enableVsSummarizeCheckbox.checked = config.enableVsSummarize !== undefined ? config.enableVsSummarize : true;
         }
         temperatureInput.value = config.temperature || 0.7;
         temperatureValue.textContent = config.temperature || 0.7;

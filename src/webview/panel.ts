@@ -55,6 +55,9 @@ export class AICoderPanel {
                     case 'search':
                         this._handleSearch(message.query, message.limit);
                         return;
+                    case 'getAllItems':
+                        this._handleGetAllItems(message.limit);
+                        return;
                     case 'openFile':
                         this._handleOpenFile(message.path);
                         return;
@@ -122,8 +125,8 @@ export class AICoderPanel {
         const summarizePrompt = vscodeConfig.get<string>('vectorization.summarizePrompt', '');
         const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin', true);
         const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize', true);
-        const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin', false);
-        const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize', false);
+        const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin', true);
+        const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize', true);
         
         // Не отправляем API ключ в webview по соображениям безопасности
         const safeConfig = {
@@ -312,6 +315,35 @@ export class AICoderPanel {
                 });
             }
         });
+    }
+
+    /**
+     * Обработка получения всех записей
+     */
+    private async _handleGetAllItems(limit?: number) {
+        try {
+            const results = await this._embeddingService.getAllItems(limit);
+            
+            // Отправка результата обратно в webview
+            this._panel.webview.postMessage({
+                command: 'searchResults',
+                results: results
+            });
+
+            if (results.length === 0) {
+                vscode.window.showInformationMessage('Записи в хранилище отсутствуют');
+            } else {
+                vscode.window.showInformationMessage(`Загружено записей: ${results.length}`);
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            vscode.window.showErrorMessage(`Ошибка загрузки записей: ${errorMessage}`);
+            
+            this._panel.webview.postMessage({
+                command: 'searchError',
+                error: errorMessage
+            });
+        }
     }
 
     /**
@@ -862,12 +894,12 @@ export class AICoderPanel {
                                         <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(summarize)</small>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                        <input type="checkbox" id="enable-vs-origin-checkbox">
+                                        <input type="checkbox" id="enable-vs-origin-checkbox" checked>
                                         <span>Сумма векторов по оригинальному тексту вложений</span>
                                         <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(vs_origin)</small>
                                     </label>
                                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                        <input type="checkbox" id="enable-vs-summarize-checkbox">
+                                        <input type="checkbox" id="enable-vs-summarize-checkbox" checked>
                                         <span>Сумма векторов по суммаризации вложений</span>
                                         <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(vs_summarize)</small>
                                     </label>

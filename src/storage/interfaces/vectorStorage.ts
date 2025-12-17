@@ -54,6 +54,11 @@ export interface VectorStorage {
     exists(path: string, kind: EmbeddingKind): Promise<boolean>;
 
     /**
+     * Получение всех записей из хранилища
+     */
+    getAllItems(limit?: number): Promise<EmbeddingItem[]>;
+
+    /**
      * Получение количества записей в хранилище
      */
     getCount(): Promise<number>;

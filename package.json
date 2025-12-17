@@ -163,17 +163,17 @@
         },
         "aiCoder.vectorization.enableSummarize": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Создавать векторы по суммаризации файлов"
         },
         "aiCoder.vectorization.enableVsOrigin": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Создавать векторы как сумму векторов по оригинальному тексту вложений"
         },
         "aiCoder.vectorization.enableVsSummarize": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Создавать векторы как сумму векторов по суммаризации вложений"
         }
       }
