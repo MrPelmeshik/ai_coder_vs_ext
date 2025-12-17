@@ -607,6 +607,7 @@ export class AICoderPanel {
                             <div class="answer-section" id="answer-section" style="display: none;">
                                 <h3 class="answer-header">✅ Итоговый ответ:</h3>
                                 <div class="answer-content-wrapper">
+                                    <button class="copy-button" id="copy-answer-btn" title="Копировать код">📋 Копировать</button>
                                     <pre class="answer-content" id="answer-content"></pre>
                                 </div>
                             </div>

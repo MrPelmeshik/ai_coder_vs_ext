@@ -13,6 +13,7 @@
     const thinkingToggle = document.getElementById('thinking-toggle');
     const answerSection = document.getElementById('answer-section');
     const answerContent = document.getElementById('answer-content');
+    const copyAnswerBtn = document.getElementById('copy-answer-btn');
     const statusSection = document.getElementById('status-section');
 
     // Элементы DOM - поиск
@@ -146,6 +147,28 @@
         }
     }
 
+    // Копирование ответа в буфер обмена
+    if (copyAnswerBtn) {
+        copyAnswerBtn.addEventListener('click', async () => {
+            const text = answerContent.textContent;
+            if (!text) return;
+            
+            try {
+                await navigator.clipboard.writeText(text);
+                const originalText = copyAnswerBtn.textContent;
+                copyAnswerBtn.textContent = '✓ Скопировано!';
+                copyAnswerBtn.classList.add('copied');
+                
+                setTimeout(() => {
+                    copyAnswerBtn.textContent = originalText;
+                    copyAnswerBtn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                showStatus('Не удалось скопировать в буфер обмена', 'error');
+            }
+        });
+    }
+
     // Переключение видимости API ключа
     let apiKeyVisible = false;
     toggleApiKeyBtn.addEventListener('click', () => {
@@ -249,6 +272,7 @@
 
         // Обновление UI
         generateBtn.disabled = true;
+        generateBtn.classList.add('loading');
         generateBtn.textContent = 'Генерация...';
         resultSection.style.display = 'block';
         thinkingSection.style.display = 'none';
@@ -435,6 +459,7 @@
                     }
                 }
                 generateBtn.disabled = false;
+                generateBtn.classList.remove('loading');
                 generateBtn.textContent = 'Сгенерировать код';
                 showStatus('Код успешно сгенерирован!', 'success');
                 // Прокрутка к результату
@@ -447,6 +472,7 @@
                 break;
             case 'error':
                 generateBtn.disabled = false;
+                generateBtn.classList.remove('loading');
                 generateBtn.textContent = 'Сгенерировать код';
                 showStatus(`Ошибка: ${message.error}`, 'error');
                 break;

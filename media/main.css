@@ -9,57 +9,71 @@ body {
     font-size: var(--vscode-font-size);
     color: var(--vscode-foreground);
     background-color: var(--vscode-editor-background);
-    padding: 20px;
+    padding: 16px;
     line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .container {
-    max-width: 900px;
+    max-width: 1000px;
     margin: 0 auto;
 }
 
 h1 {
     color: var(--vscode-textLink-foreground);
-    margin-bottom: 20px;
-    font-size: 24px;
+    margin-bottom: 24px;
+    font-size: 28px;
     font-weight: 600;
+    letter-spacing: -0.5px;
 }
 
 h2 {
     color: var(--vscode-textLink-foreground);
-    margin-top: 30px;
-    margin-bottom: 15px;
-    font-size: 18px;
+    margin-top: 32px;
+    margin-bottom: 16px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+}
+
+h3 {
+    margin: 0;
+    font-size: 16px;
     font-weight: 600;
 }
 
 .input-section {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
 
 .input-section label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     color: var(--vscode-foreground);
     font-weight: 500;
+    font-size: 14px;
 }
 
 #prompt-input {
     width: 100%;
-    padding: 12px;
+    padding: 14px 16px;
     border: 1px solid var(--vscode-input-border);
     background-color: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
-    border-radius: 4px;
+    border-radius: 6px;
     resize: vertical;
-    min-height: 120px;
+    min-height: 140px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 0 0 0 var(--vscode-focusBorder);
 }
 
 #prompt-input:focus {
     outline: none;
     border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 2px rgba(var(--vscode-focusBorder-rgb, 0, 122, 204), 0.1);
 }
 
 #prompt-input::placeholder {
@@ -68,20 +82,23 @@ h2 {
 
 #search-query-input {
     width: 100%;
-    padding: 12px;
+    padding: 14px 16px;
     border: 1px solid var(--vscode-input-border);
     background-color: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
-    border-radius: 4px;
+    border-radius: 6px;
     resize: vertical;
     min-height: 120px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 0 0 0 var(--vscode-focusBorder);
 }
 
 #search-query-input:focus {
     outline: none;
     border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 2px rgba(var(--vscode-focusBorder-rgb, 0, 122, 204), 0.1);
 }
 
 #search-query-input::placeholder {
@@ -96,36 +113,98 @@ h2 {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: none;
-    padding: 12px 24px;
+    padding: 12px 28px;
     font-size: 14px;
     font-weight: 500;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
     font-family: var(--vscode-font-family);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
 }
 
-.generate-button:hover {
+.generate-button:hover:not(:disabled) {
     background-color: var(--vscode-button-hoverBackground);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+}
+
+.generate-button:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .generate-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.generate-button.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+@keyframes spin {
+    0% { transform: translateY(-50%) rotate(0deg); }
+    100% { transform: translateY(-50%) rotate(360deg); }
 }
 
 .result-section {
-    margin-top: 30px;
-    padding: 20px;
+    margin-top: 32px;
+    padding: 24px;
     background-color: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    animation: fadeIn 0.3s ease;
+    transition: all 0.2s ease;
+}
+
+.result-section:hover {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25), 0 0 0 2px var(--vscode-focusBorder);
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .thinking-section {
     margin-bottom: 30px;
+    padding: 16px;
     padding-bottom: 20px;
-    border-bottom: 2px solid var(--vscode-panel-border);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    background-color: var(--vscode-editor-background);
+    transition: all 0.2s ease;
+}
+
+.thinking-section:hover {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 2px var(--vscode-focusBorder);
+    background-color: var(--vscode-list-hoverBackground);
 }
 
 .thinking-header {
@@ -181,8 +260,8 @@ h2 {
 
 .thinking-content {
     background-color: var(--vscode-textCodeBlock-background);
-    padding: 15px;
-    border-radius: 4px;
+    padding: 16px 18px;
+    border-radius: 6px;
     overflow-x: auto;
     font-family: var(--vscode-editor-font-family);
     font-size: var(--vscode-editor-font-size);
@@ -192,13 +271,24 @@ h2 {
     border: 1px solid var(--vscode-panel-border);
     max-height: 300px;
     overflow-y: auto;
-    line-height: 1.6;
+    line-height: 1.7;
     font-style: italic;
     scroll-behavior: smooth;
 }
 
 .answer-section {
     margin-top: 20px;
+    padding: 16px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    background-color: var(--vscode-editor-background);
+    transition: all 0.2s ease;
+}
+
+.answer-section:hover {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 2px var(--vscode-focusBorder);
+    background-color: var(--vscode-list-hoverBackground);
 }
 
 .answer-header {
@@ -219,8 +309,8 @@ h2 {
 
 .answer-content {
     background-color: var(--vscode-textCodeBlock-background);
-    padding: 15px;
-    border-radius: 4px;
+    padding: 16px 18px;
+    border-radius: 6px;
     overflow-x: auto;
     font-family: var(--vscode-editor-font-family);
     font-size: var(--vscode-editor-font-size);
@@ -229,12 +319,49 @@ h2 {
     word-wrap: break-word;
     border: 1px solid var(--vscode-panel-border);
     margin: 0;
+    position: relative;
+}
+
+.answer-content-wrapper {
+    position: relative;
+}
+
+.copy-button {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-panel-border);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    opacity: 0.8;
+    z-index: 10;
+}
+
+.copy-button:hover {
+    opacity: 1;
+    background: var(--vscode-button-secondaryHoverBackground);
+    transform: translateY(-1px);
+}
+
+.copy-button:active {
+    transform: translateY(0);
+}
+
+.copy-button.copied {
+    background: var(--vscode-testing-iconPassed);
+    color: var(--vscode-foreground);
 }
 
 #result-content {
     background-color: var(--vscode-textCodeBlock-background);
     padding: 15px;
-    border-radius: 4px;
+    border-radius: 6px;
     overflow-x: auto;
     font-family: var(--vscode-editor-font-family);
     font-size: var(--vscode-editor-font-size);
@@ -311,13 +438,15 @@ h2 {
 .tab-button {
     background: transparent;
     border: none;
-    padding: 10px 20px;
+    padding: 12px 24px;
     cursor: pointer;
     color: var(--vscode-foreground);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+    position: relative;
+    font-weight: 500;
 }
 
 .tab-button:hover {
@@ -329,6 +458,17 @@ h2 {
     color: var(--vscode-textLink-foreground);
     border-bottom-color: var(--vscode-textLink-foreground);
     font-weight: 600;
+}
+
+.tab-button.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--vscode-textLink-foreground);
+    opacity: 0.3;
 }
 
 .tab-content {
@@ -384,30 +524,45 @@ h2 {
 }
 
 .setting-group {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+    padding: 16px;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.setting-group:hover {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 2px var(--vscode-focusBorder);
+    background-color: var(--vscode-list-hoverBackground);
 }
 
 .setting-group label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     color: var(--vscode-foreground);
     font-weight: 500;
+    font-size: 14px;
 }
 
 .setting-input {
     width: 100%;
-    padding: 10px;
+    padding: 11px 14px;
     border: 1px solid var(--vscode-input-border);
     background-color: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
-    border-radius: 4px;
+    border-radius: 6px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 0 0 0 var(--vscode-focusBorder);
 }
 
 .setting-input:focus {
     outline: none;
     border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 2px rgba(var(--vscode-focusBorder-rgb, 0, 122, 204), 0.1);
 }
 
 .setting-input::placeholder {
@@ -526,15 +681,18 @@ h2 {
 .search-result-item {
     background-color: var(--vscode-list-hoverBackground);
     border: 1px solid var(--vscode-list-inactiveSelectionBackground);
-    border-radius: 4px;
-    padding: 12px;
-    margin-bottom: 10px;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 12px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .search-result-item:hover {
     background-color: var(--vscode-list-activeSelectionBackground);
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 0 2px var(--vscode-focusBorder);
 }
 
 .search-result-header {
