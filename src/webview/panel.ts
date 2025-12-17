@@ -346,12 +346,16 @@ export class AICoderPanel {
      */
     private async _handleGetStorageCount() {
         try {
-            const count = await this._embeddingService.getStorageCount();
+            const [count, size] = await Promise.all([
+                this._embeddingService.getStorageCount(),
+                this._embeddingService.getStorageSize()
+            ]);
             
             // Отправка результата обратно в webview
             this._panel.webview.postMessage({
                 command: 'storageCount',
-                count: count
+                count: count,
+                size: size
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
@@ -802,21 +806,29 @@ export class AICoderPanel {
 
                                 <div class="settings-section" style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--vscode-panel-border);">
                                     <h2>Хранилище эмбеддингов</h2>
-                                    <div class="setting-group">
-                                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                                            <label style="margin: 0; font-weight: 500;">Количество записей:</label>
-                                            <span id="storage-count" style="color: var(--vscode-textLink-foreground); font-weight: 600;">—</span>
-                                            <button id="refresh-storage-count-btn" class="toggle-button" style="padding: 5px 10px; font-size: 12px;" title="Обновить">
-                                                🔄
+                                    <div class="setting-group storage-status-group">
+                                        <div class="storage-status-container">
+                                            <div class="storage-status-item">
+                                                <div class="storage-status-label">📊 Записей:</div>
+                                                <div class="storage-status-value" id="storage-count">—</div>
+                                            </div>
+                                            <div class="storage-status-item">
+                                                <div class="storage-status-label">💾 Размер:</div>
+                                                <div class="storage-status-value" id="storage-size">—</div>
+                                            </div>
+                                        </div>
+                                        <div class="storage-actions">
+                                            <button id="refresh-storage-count-btn" class="secondary-button" style="font-size: 13px; padding: 8px 16px;">
+                                                🔄 Обновить
+                                            </button>
+                                            <button id="clear-storage-btn" class="secondary-button" style="font-size: 13px; padding: 8px 16px; background-color: var(--vscode-testing-iconFailed); color: var(--vscode-foreground);">
+                                                🗑️ Очистить хранилище
                                             </button>
                                         </div>
-                                        <p style="color: var(--vscode-descriptionForeground); margin-bottom: 15px;">
+                                        <p style="color: var(--vscode-descriptionForeground); margin-top: 16px; font-size: 12px; line-height: 1.5;">
                                             Очистка хранилища удалит все векторизованные данные. 
                                             После очистки необходимо будет заново выполнить векторизацию файлов.
                                         </p>
-                                        <button id="clear-storage-btn" class="secondary-button" style="background-color: var(--vscode-testing-iconFailed); color: var(--vscode-foreground);">
-                                            Очистить хранилище
-                                        </button>
                                     </div>
                                 </div>
                             </div>

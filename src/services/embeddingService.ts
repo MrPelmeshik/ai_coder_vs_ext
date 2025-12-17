@@ -229,6 +229,13 @@ export class EmbeddingService {
     }
 
     /**
+     * Получение размера хранилища в байтах
+     */
+    async getStorageSize(): Promise<number> {
+        return await this._storage.getStorageSize();
+    }
+
+    /**
      * Очистка всех данных из хранилища
      */
     async clearStorage(): Promise<void> {

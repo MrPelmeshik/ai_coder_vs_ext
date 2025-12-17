@@ -50,13 +50,26 @@
     const clearStorageBtn = document.getElementById('clear-storage-btn');
     const refreshStorageCountBtn = document.getElementById('refresh-storage-count-btn');
     const storageCount = document.getElementById('storage-count');
+    const storageSize = document.getElementById('storage-size');
     const settingsStatusSection = document.getElementById('settings-status-section');
     const vectorizationStatusSection = document.getElementById('vectorization-status-section');
+
+    // Функция форматирования размера
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Б';
+        const k = 1024;
+        const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
 
     // Функция запроса количества записей
     function requestStorageCount() {
         if (storageCount) {
             storageCount.textContent = '...';
+        }
+        if (storageSize) {
+            storageSize.textContent = '...';
         }
         vscode.postMessage({
             command: 'getStorageCount'
@@ -536,13 +549,22 @@
                 break;
             case 'storageCount':
                 if (storageCount) {
-                    storageCount.textContent = message.count.toString();
+                    const count = message.count || 0;
+                    storageCount.textContent = count.toLocaleString('ru-RU');
+                }
+                if (storageSize) {
+                    const size = message.size || 0;
+                    storageSize.textContent = formatBytes(size);
                 }
                 break;
             case 'storageCountError':
                 if (storageCount) {
                     storageCount.textContent = 'Ошибка';
                     storageCount.title = message.error;
+                }
+                if (storageSize) {
+                    storageSize.textContent = 'Ошибка';
+                    storageSize.title = message.error;
                 }
                 break;
         }

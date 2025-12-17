@@ -426,6 +426,51 @@ export class LanceDbStorage implements VectorStorage {
     }
 
     /**
+     * Получение размера хранилища в байтах
+     */
+    async getStorageSize(): Promise<number> {
+        await this.ensureInitialized();
+
+        try {
+            // Если таблица не существует, возвращаем 0
+            if (!this.table) {
+                return 0;
+            }
+
+            // Получаем размер директории хранилища
+            let totalSize = 0;
+            
+            const calculateDirSize = (dirPath: string): number => {
+                let size = 0;
+                try {
+                    const files = fs.readdirSync(dirPath);
+                    for (const file of files) {
+                        const filePath = path.join(dirPath, file);
+                        const stats = fs.statSync(filePath);
+                        if (stats.isDirectory()) {
+                            size += calculateDirSize(filePath);
+                        } else {
+                            size += stats.size;
+                        }
+                    }
+                } catch (error) {
+                    // Игнорируем ошибки доступа к файлам
+                }
+                return size;
+            };
+
+            if (fs.existsSync(this.storagePath)) {
+                totalSize = calculateDirSize(this.storagePath);
+            }
+
+            return totalSize;
+        } catch (error) {
+            console.error('Ошибка получения размера хранилища:', error);
+            return 0;
+        }
+    }
+
+    /**
      * Очистка всех данных из хранилища
      */
     async clear(): Promise<void> {

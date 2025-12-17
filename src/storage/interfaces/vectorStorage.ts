@@ -59,6 +59,11 @@ export interface VectorStorage {
     getCount(): Promise<number>;
 
     /**
+     * Получение размера хранилища в байтах
+     */
+    getStorageSize(): Promise<number>;
+
+    /**
      * Очистка всех данных из хранилища
      */
     clear(): Promise<void>;
