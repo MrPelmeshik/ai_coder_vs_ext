@@ -757,6 +757,17 @@ export class AICoderPanel {
                                     <div id="local-status" class="local-status"></div>
                                 </div>
 
+                                <div class="setting-group">
+                                    <label for="system-prompt-input">Системный промпт:</label>
+                                    <textarea 
+                                        id="system-prompt-input" 
+                                        class="setting-input"
+                                        rows="4"
+                                        placeholder="Оставьте пустым для использования значения по умолчанию из настроек VS Code"
+                                    ></textarea>
+                                    <small class="setting-hint">Системный промпт определяет роль и поведение модели. Если не указан, используется значение по умолчанию из настроек.</small>
+                                </div>
+
                                 <div class="button-section">
                                     <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
                                     <button id="reset-settings-btn" class="secondary-button">Сбросить</button>

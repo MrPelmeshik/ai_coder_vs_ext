@@ -32,11 +32,16 @@ export class LocalApiProvider implements LLMProvider {
         // Используем OpenAI-совместимый формат
         const url = `${baseUrl}/v1/chat/completions`;
 
-        const messages = [
+        const messages = config.systemPrompt ? [
             {
                 role: 'system',
-                content: 'You are a helpful coding assistant. Generate clean, well-commented code based on the user\'s request.'
+                content: config.systemPrompt
             },
+            {
+                role: 'user',
+                content: prompt
+            }
+        ] : [
             {
                 role: 'user',
                 content: prompt
@@ -115,8 +120,8 @@ export class LocalApiProvider implements LLMProvider {
         // Используем Ollama-совместимый формат
         const url = `${baseUrl}/api/generate`;
 
-        const systemPrompt = `You are a helpful coding assistant. Generate clean, well-commented code based on the user's request.`;
-        const fullPrompt = `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:`;
+        const systemPrompt = config.systemPrompt || '';
+        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
 
         const requestBody = {
             model: model,
@@ -193,11 +198,16 @@ export class LocalApiProvider implements LLMProvider {
 
         const url = `${baseUrl}/v1/chat/completions`;
 
-        const messages = [
+        const messages = config.systemPrompt ? [
             {
                 role: 'system',
-                content: 'You are a helpful coding assistant. Generate clean, well-commented code based on the user\'s request.'
+                content: config.systemPrompt
             },
+            {
+                role: 'user',
+                content: prompt
+            }
+        ] : [
             {
                 role: 'user',
                 content: prompt
@@ -336,8 +346,8 @@ export class LocalApiProvider implements LLMProvider {
 
         const url = `${baseUrl}/api/generate`;
 
-        const systemPrompt = `You are a helpful coding assistant. Generate clean, well-commented code based on the user's request.`;
-        const fullPrompt = `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:`;
+        const systemPrompt = config.systemPrompt || '';
+        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
 
         const requestBody = {
             model: model,

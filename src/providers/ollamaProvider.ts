@@ -20,8 +20,8 @@ export class OllamaProvider implements LLMProvider {
         const url = `${localUrl}/api/generate`;
 
         // Подготовка промпта для генерации кода
-        const systemPrompt = `You are a helpful coding assistant. Generate clean, well-commented code based on the user's request.`;
-        const fullPrompt = `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:`;
+        const systemPrompt = config.systemPrompt || '';
+        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
 
         const requestBody = {
             model: model,
@@ -84,8 +84,8 @@ export class OllamaProvider implements LLMProvider {
 
         const url = `${localUrl}/api/generate`;
 
-        const systemPrompt = `You are a helpful coding assistant. Generate clean, well-commented code based on the user's request.`;
-        const fullPrompt = `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:`;
+        const systemPrompt = config.systemPrompt || '';
+        const fullPrompt = systemPrompt ? `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:` : `User request: ${prompt}\n\nCode:`;
 
         const requestBody = {
             model: model,

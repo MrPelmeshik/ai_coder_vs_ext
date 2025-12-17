@@ -145,6 +145,11 @@
           "minimum": 5000,
           "maximum": 300000,
           "description": "Таймаут запроса в миллисекундах"
+        },
+        "aiCoder.llm.systemPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "Системный промпт для LLM. Определяет роль и поведение модели."
         }
       }
     }

@@ -43,6 +43,7 @@
     const checkLocalBtn = document.getElementById('check-local-btn');
     const localStatus = document.getElementById('local-status');
     const timeoutInput = document.getElementById('timeout-input');
+    const systemPromptInput = document.getElementById('system-prompt-input');
     const saveSettingsBtn = document.getElementById('save-settings-btn');
     const resetSettingsBtn = document.getElementById('reset-settings-btn');
     const clearStorageBtn = document.getElementById('clear-storage-btn');
@@ -307,7 +308,8 @@
             baseUrl: baseUrlInput.value.trim(),
             localUrl: localUrlInput.value.trim(),
             timeout: parseInt(timeoutInput.value),
-            apiType: apiTypeSelect.value
+            apiType: apiTypeSelect.value,
+            systemPrompt: systemPromptInput.value.trim()
         };
 
         // Валидация
@@ -349,6 +351,7 @@
             maxTokensInput.value = '2000';
             baseUrlInput.value = '';
             timeoutInput.value = '30000';
+            systemPromptInput.value = '';
             baseUrlGroup.style.display = 'none';
             
             const config = {
@@ -359,7 +362,8 @@
                 temperature: 0.7,
                 maxTokens: 2000,
                 baseUrl: '',
-                timeout: 30000
+                timeout: 30000,
+                systemPrompt: ''
             };
 
             vscode.postMessage({
@@ -548,6 +552,7 @@
         localUrlInput.value = config.localUrl || 'http://localhost:11434';
         timeoutInput.value = config.timeout || 30000;
         apiTypeSelect.value = config.apiType || 'openai';
+        systemPromptInput.value = config.systemPrompt || '';
         
         // Обновление видимости полей
         updateProviderFields();

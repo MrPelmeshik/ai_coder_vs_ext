@@ -127,6 +127,7 @@ export class LLMService {
             temperature: config.get<number>('llm.temperature', 0.7),
             maxTokens: config.get<number>('llm.maxTokens', 2000),
             baseUrl: config.get<string>('llm.baseUrl', ''),
+            systemPrompt: config.get<string>('llm.systemPrompt', ''),
             localUrl: config.get<string>('llm.localUrl', 'http://localhost:11434'),
             timeout: config.get<number>('llm.timeout', 30000),
             apiType: config.get<string>('llm.apiType', 'openai')
@@ -149,7 +150,8 @@ export class LLMService {
             baseUrl: config.get<string>('llm.baseUrl', ''),
             localUrl: config.get<string>('llm.localUrl', 'http://localhost:11434'),
             timeout: config.get<number>('llm.timeout', 30000),
-            apiType: config.get<string>('llm.apiType', 'openai')
+            apiType: config.get<string>('llm.apiType', 'openai'),
+            systemPrompt: config.get<string>('llm.systemPrompt', '')
         };
     }
 
@@ -251,6 +253,9 @@ function generatedCode() {
         if (config.apiType !== undefined) {
             await workspaceConfig.update('llm.apiType', config.apiType, vscode.ConfigurationTarget.Global);
         }
+        if (config.systemPrompt !== undefined) {
+            await workspaceConfig.update('llm.systemPrompt', config.systemPrompt, vscode.ConfigurationTarget.Global);
+        }
         
         // API ключ сохраняется отдельно через SecretStorage
         if (config.apiKey !== undefined) {
@@ -339,6 +344,7 @@ export interface LLMConfig {
     localUrl?: string;
     timeout?: number;
     apiType?: string; // Тип API для кастомного провайдера: 'openai' | 'ollama'
+    systemPrompt?: string; // Системный промпт для LLM
 }
 
 /**
