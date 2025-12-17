@@ -147,6 +147,10 @@ export class LanceDbStorage implements VectorStorage {
 
     /**
      * Создание индекса для ускорения векторного поиска
+     * 
+     * Примечание: Индекс создается только при достаточном количестве векторов для обучения KMeans.
+     * Это НЕ ограничивает количество хранимых векторов - можно хранить миллионы векторов.
+     * Индекс просто не будет создан до тех пор, пока не будет достаточно данных для его обучения.
      */
     private async _ensureIndex(): Promise<void> {
         // Предотвращаем параллельное создание индекса
@@ -159,30 +163,53 @@ export class LanceDbStorage implements VectorStorage {
             const count = await this.table.countRows();
             
             // Минимальное количество записей для создания индекса
-            const MIN_RECORDS_FOR_INDEX = 100;
+            // KMeans требует, чтобы количество векторов было >= numPartitions
+            // Для надежности используем минимум 512 записей
+            const MIN_RECORDS_FOR_INDEX = 512;
             
             // Создаем индекс если есть достаточно записей
-            // Обновляем индекс каждые 100 новых записей или при первом создании
-            if (count >= MIN_RECORDS_FOR_INDEX && (count - this.lastIndexCount >= 100 || this.lastIndexCount === 0)) {
+            // Обновляем индекс каждые 5000 новых записей или при первом создании
+            // Это снижает нагрузку при больших объемах данных (тысячи/миллионы векторов)
+            if (count >= MIN_RECORDS_FOR_INDEX && (count - this.lastIndexCount >= 5000 || this.lastIndexCount === 0)) {
                 this.indexCreationInProgress = true;
                 
                 try {
                     const { Index } = await import('@lancedb/lancedb');
                     
-                    // Вычисляем оптимальное количество разделов
-                    // numPartitions не должен превышать количество векторов
-                    // Используем формулу: min(256, max(16, sqrt(count)), но не больше count)
-                    const calculatedPartitions = Math.min(256, Math.max(16, Math.floor(Math.sqrt(count))));
-                    const numPartitions = Math.min(calculatedPartitions, count);
+                    // Вычисляем оптимальное количество разделов для разных объемов данных
+                    // ВАЖНО: Это НЕ ограничивает количество хранимых векторов!
+                    // Можно хранить миллионы векторов - индекс только ускоряет поиск
+                    let numPartitions: number;
                     
-                    // sampleRate не должен превышать количество векторов
-                    const sampleRate = Math.min(256, count);
+                    if (count < 10000) {
+                        // Для средних объемов (512-10K): адаптивное количество партиций
+                        numPartitions = Math.min(256, Math.max(64, Math.floor(Math.sqrt(count))));
+                    } else if (count < 100000) {
+                        // Для больших объемов (10K-100K): 256 партиций (стандарт)
+                        numPartitions = 256;
+                    } else {
+                        // Для очень больших объемов (>100K, включая миллионы): 512 партиций
+                        // Это обеспечивает лучшую производительность при поиске в миллионах векторов
+                        numPartitions = 512;
+                    }
+                    
+                    // КРИТИЧНО: numPartitions НЕ должен превышать количество векторов
+                    // Это требование алгоритма KMeans
+                    numPartitions = Math.min(numPartitions, count);
+                    
+                    // sampleRate: количество векторов для обучения KMeans
+                    // Для больших объемов используем больше данных для обучения (до 1024)
+                    const sampleRate = Math.max(numPartitions, Math.min(1024, count));
+                    
+                    // numSubVectors: количество подвекторов для Product Quantization
+                    // 16 - хороший баланс между качеством и производительностью
+                    const numSubVectors = 16;
                     
                     // Создаем IVF-PQ индекс для векторной колонки
                     await this.table.createIndex('vector', {
                         config: Index.ivfPq({
                             numPartitions: numPartitions,
-                            numSubVectors: 16,
+                            numSubVectors: numSubVectors,
                             distanceType: 'cosine', // Используем cosine для эмбеддингов
                             maxIterations: 50,
                             sampleRate: sampleRate
@@ -191,10 +218,13 @@ export class LanceDbStorage implements VectorStorage {
                     });
                     
                     this.lastIndexCount = count;
-                    console.log(`Векторный индекс создан/обновлен для таблицы embedding_item (${count} записей, ${numPartitions} разделов)`);
+                    console.log(`Векторный индекс создан/обновлен для таблицы embedding_item (${count.toLocaleString('ru-RU')} записей, ${numPartitions} разделов)`);
                 } catch (indexError) {
-                    // Игнорируем ошибки создания индекса (может быть уже создан или недостаточно данных)
-                    console.warn('Не удалось создать индекс:', indexError);
+                    // Игнорируем ошибки создания индекса
+                    // Это НЕ критично - поиск будет работать и без индекса, просто медленнее
+                    // При больших объемах (>100K) рекомендуется иметь индекс для производительности
+                    // Но можно хранить миллионы векторов и без индекса
+                    console.warn('Не удалось создать индекс (поиск будет работать без индекса):', indexError);
                 } finally {
                     this.indexCreationInProgress = false;
                 }
