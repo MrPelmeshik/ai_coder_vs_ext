@@ -41,6 +41,40 @@ export class LLMService {
     }
 
     /**
+     * Потоковая генерация кода на основе промпта
+     * 
+     * @param prompt - Текстовый запрос пользователя
+     * @returns Асинхронный итератор для получения частей ответа
+     */
+    public async *streamGenerateCode(prompt: string): AsyncIterable<string> {
+        const config = await this.getConfig();
+        const provider = this._providers.get(config.provider);
+        
+        if (!provider) {
+            if (config.provider === 'openai' || config.provider === 'anthropic') {
+                // Для облачных провайдеров пока используем обычную генерацию
+                const result = await this.generateCode(prompt);
+                yield result;
+                return;
+            } else {
+                const localProvider = this._providers.get('local');
+                if (localProvider && localProvider.stream) {
+                    yield* localProvider.stream(prompt, config);
+                    return;
+                }
+            }
+        }
+        
+        if (provider && provider.stream) {
+            yield* provider.stream(prompt, config);
+        } else {
+            // Если streaming не поддерживается, используем обычную генерацию
+            const result = await this.generateCode(prompt);
+            yield result;
+        }
+    }
+
+    /**
      * Генерация кода на основе промпта
      * 
      * @param prompt - Текстовый запрос пользователя

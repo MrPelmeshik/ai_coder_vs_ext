@@ -170,6 +170,287 @@ export class LocalApiProvider implements LLMProvider {
     }
 
     /**
+     * Потоковая генерация кода через локальный API
+     */
+    async *stream(prompt: string, config: LLMConfig): AsyncIterable<string> {
+        const apiType = config.apiType || 'openai';
+        
+        if (apiType === 'ollama') {
+            yield* this._streamOllamaLike(prompt, config);
+        } else {
+            yield* this._streamOpenAILike(prompt, config);
+        }
+    }
+
+    /**
+     * Потоковая генерация через OpenAI-совместимый API
+     */
+    private async *_streamOpenAILike(prompt: string, config: LLMConfig): AsyncIterable<string> {
+        const baseUrl = config.baseUrl || config.localUrl || 'http://localhost:1234';
+        const model = config.model || 'local-model';
+        const apiKey = config.apiKey || 'not-needed';
+        const timeout = config.timeout || 30000;
+
+        const url = `${baseUrl}/v1/chat/completions`;
+
+        const messages = [
+            {
+                role: 'system',
+                content: 'You are a helpful coding assistant. Generate clean, well-commented code based on the user\'s request.'
+            },
+            {
+                role: 'user',
+                content: prompt
+            }
+        ];
+
+        const requestBody = {
+            model: model,
+            messages: messages,
+            temperature: config.temperature || 0.7,
+            max_tokens: config.maxTokens || 2000,
+            stream: true
+        };
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json'
+            };
+
+            if (apiKey && apiKey.trim() && apiKey !== 'not-needed') {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(requestBody),
+                signal: controller.signal as any
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Local API error (${response.status}): ${errorText}`);
+            }
+
+            if (!response.body) {
+                throw new Error('Локальный API не вернул поток данных');
+            }
+
+            // В Node.js с node-fetch response.body - это Node.js stream
+            const stream = response.body as any;
+            let buffer = '';
+
+            // Преобразуем Node.js stream в async iterator
+            const chunks: Buffer[] = [];
+            let streamEnded = false;
+            let streamError: Error | null = null;
+
+            stream.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+
+            stream.on('end', () => {
+                streamEnded = true;
+            });
+
+            stream.on('error', (err: Error) => {
+                streamError = err;
+            });
+
+            // Читаем чанки из потока
+            while (!streamEnded || chunks.length > 0) {
+                if (streamError) {
+                    throw streamError;
+                }
+
+                if (chunks.length > 0) {
+                    const chunk = chunks.shift()!;
+                    buffer += chunk.toString('utf-8');
+                    
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.trim() && line.startsWith('data: ')) {
+                            const dataStr = line.slice(6);
+                            if (dataStr === '[DONE]') {
+                                continue;
+                            }
+                            try {
+                                const data = JSON.parse(dataStr);
+                                if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
+                                    yield data.choices[0].delta.content;
+                                }
+                            } catch {
+                                // Игнорируем некорректные JSON строки
+                            }
+                        }
+                    }
+                } else {
+                    // Ждем новые данные
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+            }
+
+            // Обрабатываем оставшийся буфер
+            if (buffer.trim() && buffer.startsWith('data: ')) {
+                const dataStr = buffer.slice(6);
+                if (dataStr !== '[DONE]') {
+                    try {
+                        const data = JSON.parse(dataStr);
+                        if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
+                            yield data.choices[0].delta.content;
+                        }
+                    } catch {
+                        // Игнорируем некорректный JSON
+                    }
+                }
+            }
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.name === 'AbortError') {
+                    throw new Error(`Таймаут запроса к локальному API (${timeout}ms). Убедитесь, что сервер запущен и доступен по адресу ${baseUrl}`);
+                }
+                if (error.message.includes('fetch')) {
+                    throw new Error(`Не удалось подключиться к локальному API по адресу ${baseUrl}. Убедитесь, что сервер запущен.`);
+                }
+                throw error;
+            }
+            throw new Error('Неизвестная ошибка при обращении к локальному API');
+        }
+    }
+
+    /**
+     * Потоковая генерация через Ollama-совместимый API
+     */
+    private async *_streamOllamaLike(prompt: string, config: LLMConfig): AsyncIterable<string> {
+        const baseUrl = config.baseUrl || config.localUrl || 'http://localhost:11434';
+        const model = config.model || 'llama2';
+        const timeout = config.timeout || 30000;
+
+        const url = `${baseUrl}/api/generate`;
+
+        const systemPrompt = `You are a helpful coding assistant. Generate clean, well-commented code based on the user's request.`;
+        const fullPrompt = `${systemPrompt}\n\nUser request: ${prompt}\n\nCode:`;
+
+        const requestBody = {
+            model: model,
+            prompt: fullPrompt,
+            stream: true,
+            options: {
+                temperature: config.temperature || 0.7,
+                num_predict: config.maxTokens || 2000
+            }
+        };
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody),
+                signal: controller.signal as any
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Ollama-like API error (${response.status}): ${errorText}`);
+            }
+
+            if (!response.body) {
+                throw new Error('Ollama-like API не вернул поток данных');
+            }
+
+            // В Node.js с node-fetch response.body - это Node.js stream
+            const stream = response.body as any;
+            let buffer = '';
+
+            // Преобразуем Node.js stream в async iterator
+            const chunks: Buffer[] = [];
+            let streamEnded = false;
+            let streamError: Error | null = null;
+
+            stream.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+
+            stream.on('end', () => {
+                streamEnded = true;
+            });
+
+            stream.on('error', (err: Error) => {
+                streamError = err;
+            });
+
+            // Читаем чанки из потока
+            while (!streamEnded || chunks.length > 0) {
+                if (streamError) {
+                    throw streamError;
+                }
+
+                if (chunks.length > 0) {
+                    const chunk = chunks.shift()!;
+                    buffer += chunk.toString('utf-8');
+                    
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const data = JSON.parse(line);
+                                if (data.response) {
+                                    yield data.response;
+                                }
+                            } catch {
+                                // Игнорируем некорректные JSON строки
+                            }
+                        }
+                    }
+                } else {
+                    // Ждем новые данные
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+            }
+
+            // Обрабатываем оставшийся буфер
+            if (buffer.trim()) {
+                try {
+                    const data = JSON.parse(buffer);
+                    if (data.response) {
+                        yield data.response;
+                    }
+                } catch {
+                    // Игнорируем некорректный JSON
+                }
+            }
+        } catch (error) {
+            if (error instanceof Error) {
+                if (error.name === 'AbortError') {
+                    throw new Error(`Таймаут запроса к Ollama-like API (${timeout}ms). Убедитесь, что сервер запущен и доступен по адресу ${baseUrl}`);
+                }
+                if (error.message.includes('fetch')) {
+                    throw new Error(`Не удалось подключиться к Ollama-like API по адресу ${baseUrl}. Убедитесь, что сервер запущен.`);
+                }
+                throw error;
+            }
+            throw new Error('Неизвестная ошибка при обращении к Ollama-like API');
+        }
+    }
+
+    /**
      * Проверка доступности локального API
      */
     async checkAvailability(baseUrl: string, apiType?: string): Promise<boolean> {

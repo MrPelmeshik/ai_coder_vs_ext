@@ -381,15 +381,156 @@ export class AICoderPanel {
             progress.report({ increment: 0, message: "Обработка запроса..." });
 
             try {
-                // Задел на будущее: вызов LLM сервиса
-                const result = await this._llmService.generateCode(text);
+                // Отправляем команду начала генерации
+                this._panel.webview.postMessage({
+                    command: 'generationStarted'
+                });
+
+                let fullResponse = '';
+                let thinkingContent = '';
+                let answerContent = '';
                 
+                // Маркеры для разделения размышлений и ответа
+                const thinkingStartMarkers = ['<think>', '<think>', '```thinking', 'thinking:', 'размышление:'];
+                const thinkingEndMarkers = ['</think>', '</think>', '```', 'answer:', 'ответ:'];
+                
+                let inThinkingBlock = false;
+                let thinkingStartPos = -1;
+                let thinkingEndPos = -1;
+                let thinkingStartMarker = '';
+                let thinkingEndMarker = '';
+
+                // Используем streaming генерацию
+                for await (const chunk of this._llmService.streamGenerateCode(text)) {
+                    fullResponse += chunk;
+                    
+                    // Проверяем начало блока размышлений
+                    if (!inThinkingBlock) {
+                        for (const marker of thinkingStartMarkers) {
+                            // Ищем маркер без учета регистра, но используем реальную позицию
+                            const lowerResponse = fullResponse.toLowerCase();
+                            const lowerMarker = marker.toLowerCase();
+                            const pos = lowerResponse.indexOf(lowerMarker);
+                            if (pos !== -1) {
+                                inThinkingBlock = true;
+                                thinkingStartMarker = marker;
+                                // Пропускаем сам маркер - начинаем после него
+                                // Используем реальную длину маркера из оригинального текста
+                                const actualMarker = fullResponse.substring(pos, pos + marker.length);
+                                thinkingStartPos = pos + actualMarker.length;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Если мы в блоке размышлений, ищем конец
+                    if (inThinkingBlock && thinkingEndPos === -1) {
+                        for (const marker of thinkingEndMarkers) {
+                            // Ищем маркер без учета регистра, но используем реальную позицию
+                            const lowerResponse = fullResponse.toLowerCase();
+                            const lowerMarker = marker.toLowerCase();
+                            const pos = lowerResponse.indexOf(lowerMarker, thinkingStartPos);
+                            if (pos !== -1) {
+                                // Нашли конец размышлений
+                                thinkingEndPos = pos;
+                                thinkingEndMarker = marker;
+                                // Используем реальную длину маркера из оригинального текста
+                                const actualMarker = fullResponse.substring(pos, pos + marker.length);
+                                // Извлекаем содержимое между тегами (без самих тегов)
+                                thinkingContent = fullResponse.substring(thinkingStartPos, thinkingEndPos).trim();
+                                // Ответ начинается после закрывающего тега
+                                answerContent = fullResponse.substring(thinkingEndPos + actualMarker.length).trim();
+                                inThinkingBlock = false;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Отправляем обновление в реальном времени
+                    if (inThinkingBlock && thinkingEndPos === -1) {
+                        // Пока в блоке размышлений, показываем накопленный текст как размышления (без открывающего тега)
+                        const currentThinking = fullResponse.substring(thinkingStartPos);
+                        // Удаляем возможные закрывающие теги из размышлений
+                        let cleanThinking = currentThinking;
+                        for (const marker of thinkingEndMarkers) {
+                            const lowerThinking = cleanThinking.toLowerCase();
+                            const lowerMarker = marker.toLowerCase();
+                            const markerPos = lowerThinking.indexOf(lowerMarker);
+                            if (markerPos !== -1) {
+                                // Удаляем тег и все после него из размышлений
+                                cleanThinking = cleanThinking.substring(0, markerPos).trim();
+                            }
+                        }
+                        thinkingContent = cleanThinking;
+                        
+                        this._panel.webview.postMessage({
+                            command: 'streamChunk',
+                            thinking: thinkingContent,
+                            answer: '',
+                            isThinking: true
+                        });
+                    } else if (thinkingEndPos !== -1) {
+                        // После конца размышлений показываем ответ (без закрывающего тега)
+                        answerContent = fullResponse.substring(thinkingEndPos + thinkingEndMarker.length).trim();
+                        
+                        this._panel.webview.postMessage({
+                            command: 'streamChunk',
+                            thinking: thinkingContent,
+                            answer: answerContent,
+                            isThinking: false
+                        });
+                    } else {
+                        // Если нет блока размышлений, весь текст показываем как размышления в реальном времени
+                        // А в конце весь текст будет итоговым ответом
+                        thinkingContent = fullResponse;
+                        
+                        this._panel.webview.postMessage({
+                            command: 'streamChunk',
+                            thinking: thinkingContent,
+                            answer: '',
+                            isThinking: true
+                        });
+                    }
+                }
+
+                // Финальная обработка
+                if (thinkingEndPos === -1 && thinkingStartPos !== -1) {
+                    // Был блок размышлений, но не нашли конец - весь текст после начала = размышления (без открывающего тега)
+                    thinkingContent = fullResponse.substring(thinkingStartPos).trim();
+                    // Удаляем возможные закрывающие теги
+                    for (const marker of thinkingEndMarkers) {
+                        const lowerThinking = thinkingContent.toLowerCase();
+                        const lowerMarker = marker.toLowerCase();
+                        const markerPos = lowerThinking.indexOf(lowerMarker);
+                        if (markerPos !== -1) {
+                            // Используем реальную длину маркера
+                            const actualMarker = thinkingContent.substring(markerPos, markerPos + marker.length);
+                            thinkingContent = thinkingContent.substring(0, markerPos).trim();
+                            // Ответ начинается после закрывающего тега
+                            const answerStartPos = thinkingStartPos + markerPos + actualMarker.length;
+                            answerContent = fullResponse.substring(answerStartPos).trim();
+                            break;
+                        }
+                    }
+                } else if (thinkingEndPos !== -1) {
+                    // Было разделение - извлекаем содержимое без тегов
+                    // Используем реальную длину закрывающего маркера
+                    const actualEndMarker = fullResponse.substring(thinkingEndPos, thinkingEndPos + thinkingEndMarker.length);
+                    thinkingContent = fullResponse.substring(thinkingStartPos, thinkingEndPos).trim();
+                    answerContent = fullResponse.substring(thinkingEndPos + actualEndMarker.length).trim();
+                } else {
+                    // Не было блока размышлений - весь текст = итоговый ответ
+                    answerContent = fullResponse;
+                    thinkingContent = '';
+                }
+
                 progress.report({ increment: 100, message: "Готово!" });
                 
-                // Отправка результата обратно в webview
+                // Отправка финального результата
                 this._panel.webview.postMessage({
-                    command: 'generated',
-                    result: result
+                    command: 'generationComplete',
+                    thinking: thinkingContent,
+                    answer: answerContent || fullResponse
                 });
 
                 vscode.window.showInformationMessage('Код успешно сгенерирован!');
@@ -454,8 +595,21 @@ export class AICoderPanel {
                             <button id="generate-btn" class="generate-button">Сгенерировать код</button>
                         </div>
                         <div class="result-section" id="result-section" style="display: none;">
-                            <h2>Результат:</h2>
-                            <pre id="result-content"></pre>
+                            <div class="thinking-section" id="thinking-section" style="display: none;">
+                                <h3 class="thinking-header">
+                                    <button class="collapse-toggle" id="thinking-toggle" title="Свернуть/развернуть">▼</button>
+                                    💭 Размышления модели:
+                                </h3>
+                                <div class="thinking-content-wrapper" id="thinking-content-wrapper">
+                                    <div class="thinking-content" id="thinking-content"></div>
+                                </div>
+                            </div>
+                            <div class="answer-section" id="answer-section" style="display: none;">
+                                <h3 class="answer-header">✅ Итоговый ответ:</h3>
+                                <div class="answer-content-wrapper">
+                                    <pre class="answer-content" id="answer-content"></pre>
+                                </div>
+                            </div>
                         </div>
                         <div class="status-section" id="status-section"></div>
                     </div>

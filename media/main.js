@@ -7,6 +7,12 @@
     const vectorizeBtn = document.getElementById('vectorize-btn');
     const resultSection = document.getElementById('result-section');
     const resultContent = document.getElementById('result-content');
+    const thinkingSection = document.getElementById('thinking-section');
+    const thinkingContent = document.getElementById('thinking-content');
+    const thinkingContentWrapper = document.getElementById('thinking-content-wrapper');
+    const thinkingToggle = document.getElementById('thinking-toggle');
+    const answerSection = document.getElementById('answer-section');
+    const answerContent = document.getElementById('answer-content');
     const statusSection = document.getElementById('status-section');
 
     // Элементы DOM - поиск
@@ -105,6 +111,38 @@
         refreshStorageCountBtn.addEventListener('click', () => {
             requestStorageCount();
         });
+    }
+
+    // Обработчик сворачивания/разворачивания секции размышлений
+    if (thinkingToggle && thinkingContentWrapper) {
+        let isCollapsed = false;
+        
+        thinkingToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            isCollapsed = !isCollapsed;
+            
+            if (isCollapsed) {
+                thinkingContentWrapper.classList.add('collapsed');
+                thinkingToggle.classList.add('collapsed');
+            } else {
+                thinkingContentWrapper.classList.remove('collapsed');
+                thinkingToggle.classList.remove('collapsed');
+                // Автоскролл к концу после разворачивания
+                setTimeout(() => {
+                    thinkingContent.scrollTop = thinkingContent.scrollHeight;
+                }, 100);
+            }
+        });
+        
+        // Также можно сворачивать по клику на заголовок
+        const thinkingHeader = thinkingToggle.parentElement;
+        if (thinkingHeader) {
+            thinkingHeader.addEventListener('click', (e) => {
+                if (e.target !== thinkingToggle) {
+                    thinkingToggle.click();
+                }
+            });
+        }
     }
 
     // Переключение видимости API ключа
@@ -211,7 +249,11 @@
         // Обновление UI
         generateBtn.disabled = true;
         generateBtn.textContent = 'Генерация...';
-        resultSection.style.display = 'none';
+        resultSection.style.display = 'block';
+        thinkingSection.style.display = 'none';
+        answerSection.style.display = 'none';
+        thinkingContent.textContent = '';
+        answerContent.textContent = '';
         showStatus('Генерация кода...', 'info');
     });
 
@@ -342,11 +384,66 @@
         const message = event.data;
 
         switch (message.command) {
+            case 'generationStarted':
+                resultSection.style.display = 'block';
+                thinkingSection.style.display = 'block';
+                answerSection.style.display = 'none';
+                thinkingContent.textContent = '';
+                answerContent.textContent = '';
+                break;
+            case 'streamChunk':
+                // Обновляем размышления и ответ в реальном времени
+                if (message.thinking) {
+                    thinkingSection.style.display = 'block';
+                    thinkingContent.textContent = message.thinking;
+                    // Автоскролл к концу размышлений, если секция не свернута
+                    if (thinkingContentWrapper && !thinkingContentWrapper.classList.contains('collapsed')) {
+                        thinkingContent.scrollTop = thinkingContent.scrollHeight;
+                    }
+                }
+                if (message.answer) {
+                    answerSection.style.display = 'block';
+                    answerContent.textContent = message.answer;
+                    // Автоскролл к концу ответа
+                    const answerWrapper = answerContent.parentElement;
+                    if (answerWrapper) {
+                        answerWrapper.scrollTop = answerWrapper.scrollHeight;
+                    }
+                }
+                break;
+            case 'generationComplete':
+                // Финальное отображение результата
+                if (message.thinking) {
+                    thinkingSection.style.display = 'block';
+                    thinkingContent.textContent = message.thinking;
+                    // Автоскролл к концу размышлений, если секция не свернута
+                    if (thinkingContentWrapper && !thinkingContentWrapper.classList.contains('collapsed')) {
+                        thinkingContent.scrollTop = thinkingContent.scrollHeight;
+                    }
+                }
+                if (message.answer) {
+                    answerSection.style.display = 'block';
+                    answerContent.textContent = message.answer;
+                    // Автоскролл к концу ответа
+                    const answerWrapper = answerContent.parentElement;
+                    if (answerWrapper) {
+                        answerWrapper.scrollTop = answerWrapper.scrollHeight;
+                    }
+                }
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Сгенерировать код';
+                showStatus('Код успешно сгенерирован!', 'success');
+                // Прокрутка к результату
+                resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                break;
             case 'generated':
+                // Обратная совместимость с не-streaming генерацией
                 displayResult(message.result);
                 showStatus('Код успешно сгенерирован!', 'success');
                 break;
             case 'error':
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Сгенерировать код';
                 showStatus(`Ошибка: ${message.error}`, 'error');
                 break;
             case 'config':
@@ -463,9 +560,13 @@
     }
 
     /**
-     * Отображение результата генерации
+     * Отображение результата генерации (обратная совместимость)
      */
     function displayResult(result) {
+        // Скрываем секции размышлений и ответа
+        thinkingSection.style.display = 'none';
+        answerSection.style.display = 'none';
+        // Показываем старый формат результата
         resultContent.textContent = result;
         resultSection.style.display = 'block';
         

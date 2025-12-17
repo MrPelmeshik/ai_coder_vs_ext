@@ -122,6 +122,115 @@ h2 {
     border-radius: 4px;
 }
 
+.thinking-section {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--vscode-panel-border);
+}
+
+.thinking-header {
+    color: var(--vscode-textLink-foreground);
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.thinking-header:hover {
+    opacity: 0.8;
+}
+
+.collapse-toggle {
+    background: none;
+    border: none;
+    color: var(--vscode-textLink-foreground);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 6px;
+    margin-right: 4px;
+    transition: transform 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+}
+
+.collapse-toggle:hover {
+    background-color: var(--vscode-button-hoverBackground);
+    border-radius: 3px;
+}
+
+.collapse-toggle.collapsed {
+    transform: rotate(-90deg);
+}
+
+.thinking-content-wrapper {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    max-height: 500px;
+}
+
+.thinking-content-wrapper.collapsed {
+    max-height: 0;
+}
+
+.thinking-content {
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 15px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
+    color: var(--vscode-descriptionForeground);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    border: 1px solid var(--vscode-panel-border);
+    max-height: 300px;
+    overflow-y: auto;
+    line-height: 1.6;
+    font-style: italic;
+    scroll-behavior: smooth;
+}
+
+.answer-section {
+    margin-top: 20px;
+}
+
+.answer-header {
+    color: var(--vscode-textLink-foreground);
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.answer-content-wrapper {
+    max-height: 500px;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+}
+
+.answer-content {
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 15px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
+    color: var(--vscode-textPreformat-foreground);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    border: 1px solid var(--vscode-panel-border);
+    margin: 0;
+}
+
 #result-content {
     background-color: var(--vscode-textCodeBlock-background);
     padding: 15px;
@@ -161,21 +270,29 @@ h2 {
 }
 
 /* Скроллбар для результата */
-#result-content::-webkit-scrollbar {
+#result-content::-webkit-scrollbar,
+.thinking-content::-webkit-scrollbar,
+.answer-content::-webkit-scrollbar {
     width: 10px;
     height: 10px;
 }
 
-#result-content::-webkit-scrollbar-track {
+#result-content::-webkit-scrollbar-track,
+.thinking-content::-webkit-scrollbar-track,
+.answer-content::-webkit-scrollbar-track {
     background: var(--vscode-scrollbarSlider-background);
 }
 
-#result-content::-webkit-scrollbar-thumb {
+#result-content::-webkit-scrollbar-thumb,
+.thinking-content::-webkit-scrollbar-thumb,
+.answer-content::-webkit-scrollbar-thumb {
     background: var(--vscode-scrollbarSlider-activeBackground);
     border-radius: 5px;
 }
 
-#result-content::-webkit-scrollbar-thumb:hover {
+#result-content::-webkit-scrollbar-thumb:hover,
+.thinking-content::-webkit-scrollbar-thumb:hover,
+.answer-content::-webkit-scrollbar-thumb:hover {
     background: var(--vscode-scrollbarSlider-hoverBackground);
 }
 
