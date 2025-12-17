@@ -168,12 +168,12 @@
             
             try {
                 await navigator.clipboard.writeText(text);
-                const originalText = copyAnswerBtn.textContent;
-                copyAnswerBtn.textContent = '✓ Скопировано!';
+                const originalIcon = copyAnswerBtn.textContent;
+                copyAnswerBtn.textContent = '✓';
                 copyAnswerBtn.classList.add('copied');
                 
                 setTimeout(() => {
-                    copyAnswerBtn.textContent = originalText;
+                    copyAnswerBtn.textContent = originalIcon;
                     copyAnswerBtn.classList.remove('copied');
                 }, 2000);
             } catch (err) {

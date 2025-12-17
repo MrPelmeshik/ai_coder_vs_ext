@@ -611,7 +611,7 @@ export class AICoderPanel {
                             <div class="answer-section" id="answer-section" style="display: none;">
                                 <h3 class="answer-header">✅ Итоговый ответ:</h3>
                                 <div class="answer-content-wrapper">
-                                    <button class="copy-button" id="copy-answer-btn" title="Копировать код">📋 Копировать</button>
+                                    <button class="copy-icon-button" id="copy-answer-btn" title="Копировать код">📋</button>
                                     <pre class="answer-content" id="answer-content"></pre>
                                 </div>
                             </div>
@@ -648,9 +648,9 @@ export class AICoderPanel {
 
                         <!-- Подвкладка LLM -->
                         <div class="settings-tab-content active" id="settings-tab-llm">
-                            <div class="settings-section">
-                                <h2>Настройки LLM</h2>
-                                
+                            <h2>Настройки LLM</h2>
+                            
+                            <div class="settings-grid">
                                 <div class="setting-group">
                                     <label for="provider-select">Провайдер:</label>
                                     <select id="provider-select" class="setting-input">
@@ -659,20 +659,6 @@ export class AICoderPanel {
                                         <option value="ollama">Ollama</option>
                                         <option value="custom">Кастомный</option>
                                     </select>
-                                </div>
-
-                                <div class="setting-group">
-                                    <label for="api-key-input">API Ключ:</label>
-                                    <div class="api-key-wrapper">
-                                        <input 
-                                            type="password" 
-                                            id="api-key-input" 
-                                            class="setting-input"
-                                            placeholder="Введите ваш API ключ"
-                                        />
-                                        <button id="toggle-api-key" class="toggle-button" title="Показать/скрыть">👁</button>
-                                    </div>
-                                    <small class="setting-hint">API ключ хранится в безопасном хранилище VS Code</small>
                                 </div>
 
                                 <div class="setting-group">
@@ -685,7 +671,23 @@ export class AICoderPanel {
                                     />
                                     <small class="setting-hint">Название модели вашего провайдера</small>
                                 </div>
+                            </div>
 
+                            <div class="setting-group">
+                                <label for="api-key-input">API Ключ:</label>
+                                <div class="api-key-wrapper">
+                                    <input 
+                                        type="password" 
+                                        id="api-key-input" 
+                                        class="setting-input"
+                                        placeholder="Введите ваш API ключ"
+                                    />
+                                    <button id="toggle-api-key" class="toggle-button" title="Показать/скрыть">👁</button>
+                                </div>
+                                <small class="setting-hint">API ключ хранится в безопасном хранилище VS Code</small>
+                            </div>
+
+                            <div class="settings-grid">
                                 <div class="setting-group">
                                     <label for="temperature-input">Температура: <span id="temperature-value">0.7</span></label>
                                     <input 
@@ -712,7 +714,9 @@ export class AICoderPanel {
                                     />
                                     <small class="setting-hint">Максимальная длина ответа в токенах</small>
                                 </div>
+                            </div>
 
+                            <div class="settings-grid">
                                 <div class="setting-group" id="local-url-group" style="display: none;">
                                     <label for="local-url-input">URL локального сервера:</label>
                                     <input 
@@ -756,10 +760,13 @@ export class AICoderPanel {
                                     />
                                     <small class="setting-hint">Максимальное время ожидания ответа</small>
                                 </div>
+                            </div>
 
                                 <div class="setting-group" id="local-check-group" style="display: none;">
-                                    <button id="check-local-btn" class="secondary-button">Проверить подключение</button>
-                                    <div id="local-status" class="local-status"></div>
+                                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                        <button id="check-local-btn" class="secondary-button" style="margin-left: 0;">Проверить подключение</button>
+                                        <div id="local-status" class="local-status"></div>
+                                    </div>
                                 </div>
 
                                 <div class="setting-group">
@@ -773,63 +780,60 @@ export class AICoderPanel {
                                     <small class="setting-hint">Системный промпт определяет роль и поведение модели. Если не указан, используется значение по умолчанию из настроек.</small>
                                 </div>
 
-                                <div class="button-section">
-                                    <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
-                                    <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
-                                </div>
-
-                                <div class="status-section" id="settings-status-section"></div>
+                            <div class="button-section">
+                                <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
+                                <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
                             </div>
+
+                            <div class="status-section" id="settings-status-section"></div>
                         </div>
 
                         <!-- Подвкладка Векторизация -->
                         <div class="settings-tab-content" id="settings-tab-vectorization">
-                            <div class="settings-section">
-                                <h2>Настройки векторизации</h2>
-                                
-                                <div class="setting-group">
-                                    <label for="embedder-model-input">Модель эмбеддинга:</label>
-                                    <input 
-                                        type="text" 
-                                        id="embedder-model-input" 
-                                        class="setting-input"
-                                        placeholder="text-embedding-ada-002, nomic-embed-text, all-minilm..."
-                                    />
-                                    <small class="setting-hint">Модель для создания векторных представлений текста</small>
-                                </div>
+                            <h2>Настройки векторизации</h2>
+                            
+                            <div class="setting-group">
+                                <label for="embedder-model-input">Модель эмбеддинга:</label>
+                                <input 
+                                    type="text" 
+                                    id="embedder-model-input" 
+                                    class="setting-input"
+                                    placeholder="text-embedding-ada-002, nomic-embed-text, all-minilm..."
+                                />
+                                <small class="setting-hint">Модель для создания векторных представлений текста</small>
+                            </div>
 
-                                <div class="button-section" style="margin-top: 30px;">
-                                    <button id="vectorize-btn" class="generate-button">Векторизовать все файлы</button>
-                                </div>
+                            <div class="button-section">
+                                <button id="vectorize-btn" class="generate-button">Векторизовать все файлы</button>
+                            </div>
 
-                                <div class="status-section" id="vectorization-status-section" style="margin-top: 20px;"></div>
+                            <div class="status-section" id="vectorization-status-section"></div>
 
-                                <div class="settings-section" style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--vscode-panel-border);">
-                                    <h2>Хранилище эмбеддингов</h2>
-                                    <div class="setting-group storage-status-group">
-                                        <div class="storage-status-container">
-                                            <div class="storage-status-item">
-                                                <div class="storage-status-label">📊 Записей:</div>
-                                                <div class="storage-status-value" id="storage-count">—</div>
-                                            </div>
-                                            <div class="storage-status-item">
-                                                <div class="storage-status-label">💾 Размер:</div>
-                                                <div class="storage-status-value" id="storage-size">—</div>
-                                            </div>
+                            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--vscode-panel-border);">
+                                <h2>Хранилище эмбеддингов</h2>
+                                <div class="setting-group storage-status-group">
+                                    <div class="storage-status-container">
+                                        <div class="storage-status-item">
+                                            <div class="storage-status-label">📊 Записей:</div>
+                                            <div class="storage-status-value" id="storage-count">—</div>
                                         </div>
-                                        <div class="storage-actions">
-                                            <button id="refresh-storage-count-btn" class="secondary-button" style="font-size: 13px; padding: 8px 16px;">
-                                                🔄 Обновить
-                                            </button>
-                                            <button id="clear-storage-btn" class="secondary-button" style="font-size: 13px; padding: 8px 16px; background-color: var(--vscode-testing-iconFailed); color: var(--vscode-foreground);">
-                                                🗑️ Очистить хранилище
-                                            </button>
+                                        <div class="storage-status-item">
+                                            <div class="storage-status-label">💾 Размер:</div>
+                                            <div class="storage-status-value" id="storage-size">—</div>
                                         </div>
-                                        <p style="color: var(--vscode-descriptionForeground); margin-top: 16px; font-size: 12px; line-height: 1.5;">
-                                            Очистка хранилища удалит все векторизованные данные. 
-                                            После очистки необходимо будет заново выполнить векторизацию файлов.
-                                        </p>
                                     </div>
+                                    <div class="storage-actions">
+                                        <button id="refresh-storage-count-btn" class="secondary-button">
+                                            🔄 Обновить
+                                        </button>
+                                        <button id="clear-storage-btn" class="secondary-button danger-button">
+                                            🗑️ Очистить хранилище
+                                        </button>
+                                    </div>
+                                    <p style="color: var(--vscode-descriptionForeground); margin-top: 10px; font-size: 11px; line-height: 1.4;">
+                                        Очистка хранилища удалит все векторизованные данные. 
+                                        После очистки необходимо будет заново выполнить векторизацию файлов.
+                                    </p>
                                 </div>
                             </div>
                         </div>
