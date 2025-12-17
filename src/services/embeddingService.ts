@@ -8,7 +8,6 @@ import { FileStatusService, FileStatus } from './fileStatusService';
 import { CONFIG_KEYS } from '../constants';
 import { ConfigValidator } from '../utils/validators';
 import { ConfigReader } from '../utils/configReader';
-import * as vscode from 'vscode';
 
 /**
  * Сервис для работы с эмбеддингами файлов
@@ -1066,14 +1065,9 @@ export class EmbeddingService {
             return await this._getOllamaEmbedding(text, config);
         }
 
-        // Используем кастомный провайдер
-        if (config.provider === 'custom' || config.provider === 'local') {
-            const apiType = config.apiType || ConfigReader.getApiTypeOpenai();
-            if (apiType === ConfigReader.getApiTypeOllama()) {
-                return await this._getOllamaEmbedding(text, config);
-            } else {
-                return await this._getCustomProviderEmbedding(text, config);
-            }
+        // OpenAI-совместимый провайдер использует OpenAI-совместимый API
+        if (config.provider === 'openai') {
+            return await this._getCustomProviderEmbedding(text, config);
         }
 
         // Для других провайдеров можно добавить поддержку
@@ -1124,7 +1118,8 @@ export class EmbeddingService {
     }
 
     /**
-     * Получение эмбеддинга через кастомный провайдер (OpenAI-совместимый API)
+     * Получение эмбеддинга через OpenAI-совместимый API
+     * Работает с локальными и облачными моделями автоматически
      */
     private async _getCustomProviderEmbedding(text: string, config: any): Promise<number[]> {
         const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
@@ -1166,7 +1161,7 @@ export class EmbeddingService {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`Custom provider embeddings API error (${response.status}): ${errorText}`);
+                throw new Error(`OpenAI-compatible embeddings API error (${response.status}): ${errorText}`);
             }
 
             const data = await response.json();

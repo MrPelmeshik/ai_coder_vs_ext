@@ -210,27 +210,28 @@
     // Показ/скрытие полей в зависимости от провайдера
     function updateProviderFields() {
         const provider = providerSelect.value;
-        const isLocal = provider === 'ollama';
-        const isCustom = provider === 'custom';
+        const isOllama = provider === 'ollama';
+        const isOpenAI = provider === 'openai';
         const needsApiKey = provider === 'openai' || provider === 'anthropic';
 
         // Показ/скрытие полей
-        localUrlGroup.style.display = isLocal ? 'block' : 'none';
-        baseUrlGroup.style.display = isCustom ? 'block' : 'none';
-        apiTypeGroup.style.display = isCustom ? 'block' : 'none';
-        localCheckGroup.style.display = (isLocal || isCustom) ? 'block' : 'none';
+        localUrlGroup.style.display = isOllama ? 'block' : 'none';
+        // baseUrl показываем для OpenAI (можно использовать для локальных моделей)
+        baseUrlGroup.style.display = isOpenAI ? 'block' : 'none';
+        apiTypeGroup.style.display = 'none'; // Больше не используется
+        localCheckGroup.style.display = (isOllama || isOpenAI) ? 'block' : 'none';
         
-        // API ключ нужен только для облачных провайдеров
+        // API ключ показываем для OpenAI и Anthropic (но можно не указывать для локальных моделей)
         const apiKeyGroup = apiKeyInput.closest('.setting-group');
         if (apiKeyGroup) {
             apiKeyGroup.style.display = needsApiKey ? 'block' : 'none';
         }
 
         // Обновление placeholder для модели
-        if (isLocal) {
+        if (isOllama) {
             modelInput.placeholder = 'llama2, codellama, mistral, phi...';
-        } else if (isCustom) {
-            modelInput.placeholder = 'Название модели вашего локального сервера';
+        } else if (isOpenAI) {
+            modelInput.placeholder = 'gpt-4, gpt-3.5-turbo (или название локальной модели)...';
         } else {
             modelInput.placeholder = 'gpt-4, gpt-3.5-turbo, claude-3-opus...';
         }
@@ -245,8 +246,8 @@
 
         if (provider === 'ollama') {
             url = localUrlInput.value.trim() || 'http://localhost:11434';
-        } else if (provider === 'custom') {
-            url = baseUrlInput.value.trim() || 'http://localhost:1234';
+        } else if (provider === 'openai') {
+            url = baseUrlInput.value.trim() || 'https://api.openai.com';
         }
 
         if (!url) {
@@ -259,12 +260,10 @@
         localStatus.textContent = '';
         localStatus.className = 'local-status';
 
-        const apiType = provider === 'custom' ? apiTypeSelect.value : undefined;
         vscode.postMessage({
             command: 'checkLocalServer',
             url: url,
-            provider: provider,
-            apiType: apiType
+            provider: provider
         });
     });
 
@@ -362,7 +361,6 @@
             baseUrl: baseUrlInput.value.trim(),
             localUrl: localUrlInput.value.trim(),
             timeout: parseInt(timeoutInput.value),
-            apiType: apiTypeSelect.value,
             systemPrompt: systemPromptInput.value.trim()
         };
 
@@ -651,7 +649,6 @@
         baseUrlInput.value = config.baseUrl || '';
         localUrlInput.value = config.localUrl || 'http://localhost:11434';
         timeoutInput.value = config.timeout || 30000;
-        apiTypeSelect.value = config.apiType || 'openai';
         systemPromptInput.value = config.systemPrompt || '';
         
         // Обновление видимости полей

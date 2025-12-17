@@ -52,7 +52,6 @@ export interface CheckLocalServerMessage extends BaseWebviewMessage {
     command: 'checkLocalServer';
     url: string;
     provider: string;
-    apiType?: string;
 }
 
 /**

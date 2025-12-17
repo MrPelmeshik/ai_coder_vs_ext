@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { OllamaProvider } from '../providers/ollamaProvider';
-import { LocalApiProvider } from '../providers/localApiProvider';
+import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
 
 import { STORAGE_KEYS, CONFIG_KEYS, API_TYPES } from '../constants';
 
@@ -25,9 +25,8 @@ export class LLMService {
         // Инициализация провайдеров
         this._providers = new Map();
         this._providers.set('ollama', new OllamaProvider());
-        this._providers.set('custom', new LocalApiProvider());
-        // Для локальных API также используем LocalApiProvider
-        this._providers.set('local', new LocalApiProvider());
+        // OpenAI-совместимый провайдер (работает с локальными и облачными моделями автоматически)
+        this._providers.set('openai', new OpenAiCompatibleProvider());
         
         // Асинхронная загрузка конфигурации с API ключом
         this._loadConfig().then(config => {
@@ -53,15 +52,16 @@ export class LLMService {
         const provider = this._providers.get(config.provider);
         
         if (!provider) {
-            if (config.provider === 'openai' || config.provider === 'anthropic') {
+            // Если провайдер не найден, пробуем использовать openai как fallback
+            if (config.provider === 'anthropic') {
                 // Для облачных провайдеров пока используем обычную генерацию
                 const result = await this.generateCode(prompt);
                 yield result;
                 return;
             } else {
-                const localProvider = this._providers.get('local');
-                if (localProvider && localProvider.stream) {
-                    yield* localProvider.stream(prompt, config);
+                const openaiProvider = this._providers.get('openai');
+                if (openaiProvider && openaiProvider.stream) {
+                    yield* openaiProvider.stream(prompt, config);
                     return;
                 }
             }
@@ -90,15 +90,15 @@ export class LLMService {
         const provider = this._providers.get(config.provider);
         
         if (!provider) {
-            // Если провайдер не найден, используем заглушку или пробуем локальный API
-            if (config.provider === 'openai' || config.provider === 'anthropic') {
+            // Если провайдер не найден, пробуем использовать openai как fallback
+            if (config.provider === 'anthropic') {
                 // Для облачных провайдеров пока используем заглушку
                 return this._mockGenerateCode(prompt);
             } else {
-                // Для неизвестных провайдеров пробуем локальный API
-                const localProvider = this._providers.get('local');
-                if (localProvider) {
-                    return await localProvider.generate(prompt, config);
+                // Для неизвестных провайдеров пробуем openai
+                const openaiProvider = this._providers.get('openai');
+                if (openaiProvider) {
+                    return await openaiProvider.generate(prompt, config);
                 }
                 return this._mockGenerateCode(prompt);
             }
@@ -296,12 +296,14 @@ function generatedCode() {
         if (config.provider === 'ollama') {
             const provider = this._providers.get('ollama') as OllamaProvider;
             if (provider && typeof (provider as any).checkAvailability === 'function') {
-                return await (provider as any).checkAvailability(config.localUrl!);
+                const url = config.baseUrl || config.localUrl || 'http://localhost:11434';
+                return await (provider as any).checkAvailability(url);
             }
-        } else if (config.provider === 'custom' || config.provider === 'local') {
-            const provider = this._providers.get('local') as LocalApiProvider;
+        } else if (config.provider === 'openai') {
+            const provider = this._providers.get('openai') as OpenAiCompatibleProvider;
             if (provider && typeof (provider as any).checkAvailability === 'function') {
-                const url = config.baseUrl || config.localUrl!;
+                // Для OpenAI: если указан baseUrl/localUrl - проверяем его, иначе проверяем стандартный OpenAI API
+                const url = config.baseUrl || config.localUrl || 'https://api.openai.com';
                 return await (provider as any).checkAvailability(url);
             }
         }
@@ -310,7 +312,7 @@ function generatedCode() {
     }
 
     /**
-     * Получение списка доступных моделей (для Ollama)
+     * Получение списка доступных моделей
      */
     public async listLocalModels(): Promise<string[]> {
         const config = await this.getConfig();
@@ -318,7 +320,15 @@ function generatedCode() {
         if (config.provider === 'ollama') {
             const provider = this._providers.get('ollama') as OllamaProvider;
             if (provider && typeof (provider as any).listModels === 'function') {
-                return await (provider as any).listModels(config.localUrl!);
+                const url = config.baseUrl || config.localUrl || 'http://localhost:11434';
+                return await (provider as any).listModels(url);
+            }
+        } else if (config.provider === 'openai') {
+            const provider = this._providers.get('openai') as OpenAiCompatibleProvider;
+            if (provider && typeof (provider as any).listModels === 'function') {
+                // Для OpenAI: если указан baseUrl/localUrl - используем его, иначе стандартный OpenAI API
+                const url = config.baseUrl || config.localUrl || 'https://api.openai.com';
+                return await (provider as any).listModels(url, config.apiKey);
             }
         }
         

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { LLMService } from '../services/llmService';
 import { EmbeddingService } from '../services/embedding/embeddingService';
 import { OllamaProvider } from '../providers/ollamaProvider';
-import { LocalApiProvider } from '../providers/localApiProvider';
+import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
 import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage } from '../types/messages';
 
 /**
@@ -46,7 +46,7 @@ export class AICoderPanel {
                         return;
                     case 'checkLocalServer':
                         const checkMsg = message as CheckLocalServerMessage;
-                        this._handleCheckLocalServer(checkMsg.url, checkMsg.provider, checkMsg.apiType);
+                        this._handleCheckLocalServer(checkMsg.url, checkMsg.provider);
                         return;
                     case 'alert':
                         vscode.window.showInformationMessage((message as any).text);
@@ -189,15 +189,15 @@ export class AICoderPanel {
     /**
      * Обработка проверки локального сервера
      */
-    private async _handleCheckLocalServer(url: string, provider: string, apiType?: string) {
+    private async _handleCheckLocalServer(url: string, provider: string) {
         try {
             let available = false;
             if (provider === 'ollama') {
                 const providerInstance = new OllamaProvider();
                 available = await providerInstance.checkAvailability(url);
-            } else if (provider === 'custom') {
-                const providerInstance = new LocalApiProvider();
-                available = await providerInstance.checkAvailability(url, apiType);
+            } else if (provider === 'openai') {
+                const providerInstance = new OpenAiCompatibleProvider();
+                available = await providerInstance.checkAvailability(url);
             }
 
             this._panel.webview.postMessage({
@@ -726,7 +726,6 @@ export class AICoderPanel {
                                         <option value="openai">OpenAI</option>
                                         <option value="anthropic">Anthropic Claude</option>
                                         <option value="ollama">Ollama</option>
-                                        <option value="custom">Кастомный</option>
                                     </select>
                                 </div>
 
@@ -798,23 +797,14 @@ export class AICoderPanel {
                                 </div>
 
                                 <div class="setting-group" id="base-url-group" style="display: none;">
-                                    <label for="base-url-input">Базовый URL:</label>
+                                    <label for="base-url-input">URL сервера (опционально):</label>
                                     <input 
                                         type="text" 
                                         id="base-url-input" 
                                         class="setting-input"
                                         placeholder="http://localhost:1234/v1"
                                     />
-                                    <small class="setting-hint">URL для кастомного провайдера или LM Studio (например: http://localhost:1234/v1)</small>
-                                </div>
-
-                                <div class="setting-group" id="api-type-group" style="display: none;">
-                                    <label for="api-type-select">Тип API:</label>
-                                    <select id="api-type-select" class="setting-input">
-                                        <option value="openai">OpenAI-совместимый</option>
-                                        <option value="ollama">Ollama-совместимый</option>
-                                    </select>
-                                    <small class="setting-hint">Тип API для кастомного провайдера (OpenAI для LM Studio/vLLM, Ollama для Ollama-совместимых серверов)</small>
+                                    <small class="setting-hint">Для локальных моделей (LM Studio, LocalAI и т.д.). Если не указан, используется облачный OpenAI API</small>
                                 </div>
 
                                 <div class="setting-group">

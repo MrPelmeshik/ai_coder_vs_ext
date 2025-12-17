@@ -60,7 +60,8 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
 }
 
 /**
- * Провайдер эмбеддингов через кастомный API (OpenAI-совместимый)
+ * Провайдер эмбеддингов через OpenAI-совместимый API
+ * Работает с локальными и облачными моделями автоматически
  */
 export class CustomEmbeddingProvider implements EmbeddingProvider {
     async getEmbedding(text: string, config: LLMConfig): Promise<number[]> {
@@ -101,7 +102,7 @@ export class CustomEmbeddingProvider implements EmbeddingProvider {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`Custom provider embeddings API error (${response.status}): ${errorText}`);
+                throw new Error(`OpenAI-compatible embeddings API error (${response.status}): ${errorText}`);
             }
 
             const data = await response.json();
@@ -128,20 +129,18 @@ export class CustomEmbeddingProvider implements EmbeddingProvider {
  */
 export class EmbeddingProviderFactory {
     static create(config: LLMConfig): EmbeddingProvider {
+        // Ollama провайдер использует OllamaEmbeddingProvider
         if (config.provider === 'ollama') {
             return new OllamaEmbeddingProvider();
         }
 
-        if (config.provider === 'custom' || config.provider === 'local') {
-            const apiType = config.apiType || ConfigReader.getApiTypeOpenai();
-            if (apiType === ConfigReader.getApiTypeOllama()) {
-                return new OllamaEmbeddingProvider();
-            } else {
-                return new CustomEmbeddingProvider();
-            }
+        // OpenAI-совместимый провайдер использует CustomEmbeddingProvider
+        // который работает с OpenAI-совместимым API форматом
+        if (config.provider === 'openai') {
+            return new CustomEmbeddingProvider();
         }
 
-        // По умолчанию используем кастомный провайдер
+        // По умолчанию используем OpenAI-совместимый провайдер
         return new CustomEmbeddingProvider();
     }
 }
