@@ -25,6 +25,8 @@ export type WebviewCommand =
     | 'deleteServer'
     | 'checkServer'
     | 'getServerModels'
+    | 'getAvailableModels'
+    | 'addServerModel'
     | 'updateServerModel'
     | 'toggleServerActive'
     | 'toggleModelActive'
@@ -200,6 +202,32 @@ export interface GetServerModelsMessage extends BaseWebviewMessage {
 }
 
 /**
+ * Сообщение получения списка доступных моделей с сервера (без сохранения)
+ */
+export interface GetAvailableModelsMessage extends BaseWebviewMessage {
+    command: 'getAvailableModels';
+    serverId: string;
+    url: string;
+    apiKey?: string;
+}
+
+/**
+ * Сообщение добавления модели к серверу
+ */
+export interface AddServerModelMessage extends BaseWebviewMessage {
+    command: 'addServerModel';
+    serverId: string;
+    model: {
+        name: string;
+        displayName?: string;
+        temperature?: number;
+        maxTokens?: number;
+        systemPrompt?: string;
+        active?: boolean;
+    };
+}
+
+/**
  * Сообщение обновления настроек модели сервера
  */
 export interface UpdateServerModelMessage extends BaseWebviewMessage {
@@ -208,6 +236,7 @@ export interface UpdateServerModelMessage extends BaseWebviewMessage {
     model: {
         id?: string;
         name: string;
+        displayName?: string;
         temperature?: number;
         maxTokens?: number;
         systemPrompt?: string;
@@ -255,6 +284,8 @@ export type WebviewMessage =
     | DeleteServerMessage
     | CheckServerMessage
     | GetServerModelsMessage
+    | GetAvailableModelsMessage
+    | AddServerModelMessage
     | UpdateServerModelMessage
     | ToggleServerActiveMessage
     | ToggleModelActiveMessage

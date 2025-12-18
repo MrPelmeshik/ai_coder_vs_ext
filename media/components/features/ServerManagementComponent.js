@@ -7,6 +7,8 @@ class ServerManagementComponent {
         this.servers = [];
         this.editingServerId = null;
         this.modelsEditMode = {};
+        this._addingModelServerId = null;
+        this._addModelFormVisible = false;
         
         // Убеждаемся, что escapeHtml доступна (fallback если не загружена)
         if (typeof escapeHtml === 'undefined' && typeof window.escapeHtml === 'function') {
@@ -170,7 +172,7 @@ class ServerManagementComponent {
             this.messageBus.send('getActiveModels');
         });
         
-        // Модели сервера
+        // Модели сервера (для обратной совместимости, если где-то еще используется)
         this.messageBus.subscribe('serverModelsList', (message) => {
             const server = this.servers.find(s => s.id === message.serverId);
             if (server) {
@@ -180,13 +182,21 @@ class ServerManagementComponent {
             }
         });
         
-        // Ошибка загрузки моделей
-        this.messageBus.subscribe('serverModelsListError', (message) => {
-            const serversList = this._getServersList();
-            const serverItem = serversList?.querySelector(`[data-server-id="${message.serverId}"]`);
-            const modelsList = serverItem?.querySelector('.server-models-list');
-            if (modelsList) {
-                modelsList.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--vscode-errorForeground);">Ошибка загрузки моделей: ${(window.escapeHtml || escapeHtml)(message.error)}</div>`;
+        // Список доступных моделей с сервера (для выбора при добавлении)
+        this.messageBus.subscribe('availableModelsList', (message) => {
+            if (this._addingModelServerId === message.serverId) {
+                this._showAddModelFormWithModels(message.serverId, message.models || []);
+            }
+        });
+        
+        // Ошибка получения доступных моделей
+        this.messageBus.subscribe('availableModelsListError', (message) => {
+            if (this._addingModelServerId === message.serverId) {
+                this.messageBus.send('showNotification', {
+                    message: `Ошибка получения списка моделей: ${message.error}`,
+                    type: 'error'
+                });
+                this._addingModelServerId = null;
             }
         });
         
@@ -206,6 +216,37 @@ class ServerManagementComponent {
                 server.status = 'unavailable';
                 this._renderServers();
             }
+        });
+        
+        // Модель добавлена
+        this.messageBus.subscribe('serverModelAdded', (message) => {
+            const server = this.servers.find(s => s.id === message.serverId);
+            if (server) {
+                if (!server.models) {
+                    server.models = [];
+                }
+                // Добавляем модель (разрешаем добавлять одну и ту же модель несколько раз)
+                server.models.push(message.model);
+                const editMode = this.modelsEditMode[message.serverId] || false;
+                this._renderServerModels(message.serverId, server.models, editMode);
+            }
+        });
+        
+        // Ошибка добавления модели
+        this.messageBus.subscribe('serverModelAddError', (message) => {
+            this.messageBus.send('showNotification', {
+                message: `Ошибка добавления модели: ${message.error}`,
+                type: 'error'
+            });
+            this._hideAddModelForm(message.serverId);
+        });
+        
+        // Ошибка обновления модели
+        this.messageBus.subscribe('serverModelUpdateError', (message) => {
+            this.messageBus.send('showNotification', {
+                message: `Ошибка обновления модели: ${message.error}`,
+                type: 'error'
+            });
         });
         
         // Обновление модели сервера
@@ -504,15 +545,13 @@ class ServerManagementComponent {
                             <button class="server-action-btn view-models-mode-btn" data-server-id="${server.id}">
                                 Просмотр
                             </button>
-                            <button class="server-action-btn load-models-btn" data-server-id="${server.id}">
-                                Загрузить модели
+                            <button class="server-action-btn add-model-btn" data-server-id="${server.id}">
+                                + Добавить модель
                             </button>
                         </div>
                     </div>
                     <div class="server-models-list" data-server-id="${server.id}">
-                        <div style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">
-                            Нажмите "Загрузить модели" для получения списка моделей с сервера
-                        </div>
+                        ${server.models && server.models.length > 0 ? '' : '<div style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">Модели не добавлены</div>'}
                     </div>
                 </div>
             </div>
@@ -555,12 +594,12 @@ class ServerManagementComponent {
             });
         });
         
-        // Загрузка моделей
-        serversList.querySelectorAll('.load-models-btn').forEach(btn => {
+        // Добавление модели
+        serversList.querySelectorAll('.add-model-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const serverId = e.target.getAttribute('data-server-id');
-                this._loadServerModels(serverId);
+                this._showAddModelForm(serverId);
             });
         });
         
@@ -666,25 +705,206 @@ class ServerManagementComponent {
     }
     
     /**
-     * Загрузка моделей сервера
+     * Показать форму добавления модели
      */
-    _loadServerModels(serverId) {
+    _showAddModelForm(serverId) {
         const server = this.servers.find(s => s.id === serverId);
         if (!server) return;
         
-        const serversList = this._getServersList();
-        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
-        const modelsList = serverItem?.querySelector('.server-models-list');
-        
-        if (modelsList) {
-            modelsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">Загрузка моделей...</div>';
-        }
-        
-        this.messageBus.send('getServerModels', {
+        // Запрашиваем список доступных моделей с сервера
+        this.messageBus.send('getAvailableModels', {
             serverId: serverId,
             url: server.url,
             apiKey: server.apiKey
         });
+        
+        // Сохраняем serverId для формы
+        this._addingModelServerId = serverId;
+    }
+    
+    /**
+     * Показать форму добавления модели со списком доступных моделей
+     */
+    _showAddModelFormWithModels(serverId, availableModels) {
+        const serversList = this._getServersList();
+        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
+        const modelsList = serverItem?.querySelector('.server-models-list');
+        if (!modelsList) return;
+        
+        this._addModelFormVisible = true;
+        
+        // Показываем все доступные модели, включая уже добавленные
+        const formHTML = `
+            <div class="model-add-form" style="background-color: var(--vscode-textCodeBlock-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 16px; margin-bottom: 12px;">
+                <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 14px; font-weight: 600; color: var(--vscode-textLink-foreground);">Добавить модель</h3>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="setting-group">
+                        <label for="add-model-select-${serverId}" style="display: block; margin-bottom: 4px; font-size: 12px;">Модель с сервера:</label>
+                        <select id="add-model-select-${serverId}" class="setting-input" style="width: 100%;">
+                            <option value="">Выберите модель...</option>
+                            ${availableModels.map(name => `<option value="${(window.escapeHtml || escapeHtml)(name)}">${(window.escapeHtml || escapeHtml)(name)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label for="add-model-display-name-${serverId}" style="display: block; margin-bottom: 4px; font-size: 12px;">Пользовательское наименование:</label>
+                        <input 
+                            type="text" 
+                            id="add-model-display-name-${serverId}" 
+                            class="setting-input" 
+                            placeholder="Например: Основная модель для генерации"
+                            required
+                            style="width: 100%;"
+                        />
+                    </div>
+                    <div class="settings-grid">
+                        <div class="setting-group">
+                            <label for="add-model-temperature-${serverId}" style="display: block; margin-bottom: 4px; font-size: 12px;">Температура:</label>
+                            <input 
+                                type="number" 
+                                id="add-model-temperature-${serverId}" 
+                                class="setting-input" 
+                                min="0" 
+                                max="2" 
+                                step="0.1" 
+                                placeholder="0.7"
+                            />
+                        </div>
+                        <div class="setting-group">
+                            <label for="add-model-max-tokens-${serverId}" style="display: block; margin-bottom: 4px; font-size: 12px;">Максимум токенов:</label>
+                            <input 
+                                type="number" 
+                                id="add-model-max-tokens-${serverId}" 
+                                class="setting-input" 
+                                min="100" 
+                                max="8000" 
+                                placeholder="2000"
+                            />
+                        </div>
+                    </div>
+                    <div class="setting-group">
+                        <label for="add-model-system-prompt-${serverId}" style="display: block; margin-bottom: 4px; font-size: 12px;">Системный промпт (необязательно):</label>
+                        <textarea 
+                            id="add-model-system-prompt-${serverId}" 
+                            class="setting-input" 
+                            rows="3"
+                            placeholder="Оставьте пустым для использования значения по умолчанию"
+                            style="width: 100%;"
+                        ></textarea>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button class="server-action-btn save-add-model-btn" data-server-id="${serverId}" style="flex: 1;">
+                            Добавить модель
+                        </button>
+                        <button class="server-action-btn cancel-add-model-btn" data-server-id="${serverId}">
+                            Отмена
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Вставляем форму в начало списка моделей
+        modelsList.insertAdjacentHTML('afterbegin', formHTML);
+        
+        // Прикрепляем обработчики
+        const saveBtn = modelsList.querySelector(`.save-add-model-btn[data-server-id="${serverId}"]`);
+        const cancelBtn = modelsList.querySelector(`.cancel-add-model-btn[data-server-id="${serverId}"]`);
+        
+        if (saveBtn) {
+            saveBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._handleSaveAddModel(serverId);
+            });
+        }
+        
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._hideAddModelForm(serverId);
+            });
+        }
+    }
+    
+    /**
+     * Скрыть форму добавления модели
+     */
+    _hideAddModelForm(serverId) {
+        const serversList = this._getServersList();
+        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
+        const modelsList = serverItem?.querySelector('.server-models-list');
+        const form = modelsList?.querySelector('.model-add-form');
+        
+        if (form) {
+            form.remove();
+        }
+        
+        this._addModelFormVisible = false;
+        this._addingModelServerId = null;
+        
+        // Перерисовываем модели
+        const server = this.servers.find(s => s.id === serverId);
+        if (server) {
+            const editMode = this.modelsEditMode[serverId] || false;
+            this._renderServerModels(serverId, server.models || [], editMode);
+        }
+    }
+    
+    /**
+     * Обработка сохранения новой модели
+     */
+    _handleSaveAddModel(serverId) {
+        const serversList = this._getServersList();
+        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
+        const modelsList = serverItem?.querySelector('.server-models-list');
+        
+        const modelSelect = modelsList?.querySelector(`#add-model-select-${serverId}`);
+        const displayNameInput = modelsList?.querySelector(`#add-model-display-name-${serverId}`);
+        const temperatureInput = modelsList?.querySelector(`#add-model-temperature-${serverId}`);
+        const maxTokensInput = modelsList?.querySelector(`#add-model-max-tokens-${serverId}`);
+        const systemPromptInput = modelsList?.querySelector(`#add-model-system-prompt-${serverId}`);
+        
+        if (!modelSelect || !modelSelect.value) {
+            this.messageBus.send('showNotification', {
+                message: 'Пожалуйста, выберите модель',
+                type: 'error'
+            });
+            return;
+        }
+        
+        const modelName = modelSelect.value;
+        const displayName = displayNameInput?.value.trim() || '';
+        
+        // Проверка обязательного поля пользовательского наименования
+        if (!displayName) {
+            this.messageBus.send('showNotification', {
+                message: 'Пожалуйста, введите пользовательское наименование модели',
+                type: 'error'
+            });
+            if (displayNameInput) {
+                displayNameInput.focus();
+            }
+            return;
+        }
+        
+        const temperature = temperatureInput?.value ? parseFloat(temperatureInput.value) : undefined;
+        const maxTokens = maxTokensInput?.value ? parseInt(maxTokensInput.value) : undefined;
+        const systemPrompt = systemPromptInput?.value.trim() || undefined;
+        
+        // Отправляем запрос на добавление модели
+        this.messageBus.send('addServerModel', {
+            serverId: serverId,
+            model: {
+                name: modelName,
+                displayName: displayName,
+                temperature: temperature,
+                maxTokens: maxTokens,
+                systemPrompt: systemPrompt,
+                active: true
+            }
+        });
+        
+        // Скрываем форму
+        this._hideAddModelForm(serverId);
     }
     
     /**
@@ -718,8 +938,13 @@ class ServerManagementComponent {
             if (viewBtn) viewBtn.style.display = 'none';
         }
         
+        // Показываем форму добавления модели, если она открыта
+        if (this._addingModelServerId === serverId && this._addModelFormVisible) {
+            return; // Форма уже отображается
+        }
+        
         if (models.length === 0) {
-            modelsList.innerHTML = '<div class="empty-servers-message">Модели не найдены</div>';
+            modelsList.innerHTML = '<div class="empty-servers-message">Модели не добавлены</div>';
             return;
         }
         
@@ -751,7 +976,20 @@ class ServerManagementComponent {
                         <span style="font-size: 11px; color: var(--vscode-foreground);">Активна</span>
                     </label>
                     <div style="flex: 1;">
-                        <div class="model-name">${(window.escapeHtml || escapeHtml)(model.name)}</div>
+                        <div class="setting-group" style="margin-bottom: 8px;">
+                            <label style="display: block; margin-bottom: 4px; font-size: 11px;">Пользовательское наименование:</label>
+                            <input 
+                                type="text" 
+                                class="model-display-name-input setting-input" 
+                                data-model-id="${modelId}"
+                                value="${model.displayName || ''}"
+                                placeholder="${(window.escapeHtml || escapeHtml)(model.name)}"
+                                style="width: 100%;"
+                            />
+                        </div>
+                        <div style="font-size: 10px; color: var(--vscode-descriptionForeground);">
+                            Оригинальное имя: ${(window.escapeHtml || escapeHtml)(model.name)}
+                        </div>
                     </div>
                 </div>
                 <div class="model-settings">
@@ -807,6 +1045,7 @@ class ServerManagementComponent {
     _buildModelViewHTML(serverId, model, index) {
         const modelId = model.id || `model-${index}`;
         const isModelActive = model.active !== false;
+        const displayName = model.displayName || model.name;
         const settings = [];
         
         if (model.temperature !== undefined) {
@@ -827,7 +1066,8 @@ class ServerManagementComponent {
                         <span style="font-size: 11px; color: var(--vscode-foreground);">Активна</span>
                     </label>
                     <div style="flex: 1;">
-                        <div class="model-name">${(window.escapeHtml || escapeHtml)(model.name)}</div>
+                        <div class="model-name">${(window.escapeHtml || escapeHtml)(displayName)}</div>
+                        ${model.displayName ? `<div style="font-size: 10px; color: var(--vscode-descriptionForeground); margin-top: 2px;">${(window.escapeHtml || escapeHtml)(model.name)}</div>` : ''}
                         ${settings.length > 0 ? `<div class="model-settings-preview" style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 4px;">${settings.join(' • ')}</div>` : ''}
                     </div>
                 </div>
@@ -852,11 +1092,17 @@ class ServerManagementComponent {
                 const modelItem = modelsList.querySelector(`[data-model-id="${modelId}"]`);
                 if (!modelItem) return;
                 
-                const modelName = modelItem.querySelector('.model-name')?.textContent || '';
+                // Находим модель в списке для получения оригинального имени
+                const server = this.servers.find(s => s.id === serverId);
+                const model = server?.models?.find(m => m.id === modelId || m.name === modelId);
+                if (!model) return;
+                
+                const displayNameInput = modelItem.querySelector('.model-display-name-input');
                 const temperatureInput = modelItem.querySelector('.model-temperature-input');
                 const maxTokensInput = modelItem.querySelector('.model-max-tokens-input');
                 const systemPromptInput = modelItem.querySelector('.model-system-prompt-input');
                 
+                const displayName = displayNameInput ? displayNameInput.value.trim() : undefined;
                 const temperature = temperatureInput && temperatureInput.value ? 
                     parseFloat(temperatureInput.value) : undefined;
                 const maxTokens = maxTokensInput && maxTokensInput.value ? 
@@ -867,7 +1113,8 @@ class ServerManagementComponent {
                     serverId: serverId,
                     model: {
                         id: modelId,
-                        name: modelName,
+                        name: model.name, // Сохраняем оригинальное имя
+                        displayName: displayName || undefined,
                         temperature: temperature,
                         maxTokens: maxTokens,
                         systemPrompt: systemPrompt

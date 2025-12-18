@@ -27,6 +27,7 @@ interface LLMServer {
 interface ServerModel {
     id: string;
     name: string;
+    displayName?: string; // Пользовательское наименование для удобства выбора
     temperature?: number;
     maxTokens?: number;
     systemPrompt?: string;
@@ -148,6 +149,14 @@ export class AICoderPanel {
                     case 'getServerModels':
                         const getModelsMsg = message as any;
                         this._handleGetServerModels(getModelsMsg.serverId, getModelsMsg.url, getModelsMsg.apiKey);
+                        return;
+                    case 'getAvailableModels':
+                        const getAvailableMsg = message as any;
+                        this._handleGetAvailableModels(getAvailableMsg.serverId, getAvailableMsg.url, getAvailableMsg.apiKey);
+                        return;
+                    case 'addServerModel':
+                        const addModelMsg = message as any;
+                        this._handleAddServerModel(addModelMsg.serverId, addModelMsg.model);
                         return;
                     case 'updateServerModel':
                         const updateModelMsg = message as any;
@@ -707,7 +716,7 @@ export class AICoderPanel {
                                 serverId: server.id,
                                 serverName: server.name,
                                 modelId: model.id || model.name,
-                                modelName: model.name,
+                                modelName: model.displayName || model.name, // Используем displayName если есть
                                 url: server.url,
                                 apiKey: server.apiKey,
                                 temperature: model.temperature,
@@ -739,9 +748,21 @@ export class AICoderPanel {
         try {
             Logger.info(`Добавление сервера: ${serverData.name}, URL: ${serverData.url}`);
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            
+            // Проверка уникальности имени сервера
+            const trimmedName = serverData.name.trim();
+            if (!trimmedName) {
+                throw new Error('Имя сервера не может быть пустым');
+            }
+            
+            const existingServer = servers.find(s => s.name.trim().toLowerCase() === trimmedName.toLowerCase());
+            if (existingServer) {
+                throw new Error(`Сервер с именем "${trimmedName}" уже существует`);
+            }
+            
             const newServer: LLMServer = {
                 id: `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                name: serverData.name,
+                name: trimmedName,
                 url: serverData.url,
                 apiKey: serverData.apiKey,
                 active: true, // По умолчанию сервер активен
@@ -792,9 +813,20 @@ export class AICoderPanel {
                 throw new Error('Сервер не найден');
             }
             
+            // Проверка уникальности имени сервера (исключая текущий сервер)
+            const trimmedName = serverData.name.trim();
+            if (!trimmedName) {
+                throw new Error('Имя сервера не может быть пустым');
+            }
+            
+            const existingServer = servers.find(s => s.id !== serverId && s.name.trim().toLowerCase() === trimmedName.toLowerCase());
+            if (existingServer) {
+                throw new Error(`Сервер с именем "${trimmedName}" уже существует`);
+            }
+            
             servers[serverIndex] = {
                 ...servers[serverIndex],
-                name: serverData.name,
+                name: trimmedName,
                 url: serverData.url,
                 apiKey: serverData.apiKey
             };
@@ -882,7 +914,30 @@ export class AICoderPanel {
     }
 
     /**
-     * Получение списка моделей с сервера
+     * Получение списка доступных моделей с сервера (без сохранения)
+     */
+    private async _handleGetAvailableModels(serverId: string, url: string, apiKey?: string) {
+        try {
+            const provider = new OpenAiCompatibleProvider();
+            const models = await provider.listModels(url, apiKey);
+            
+            this._panel.webview.postMessage({
+                command: 'availableModelsList',
+                serverId: serverId,
+                models: models
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'availableModelsListError',
+                serverId: serverId,
+                error: errorMessage
+            });
+        }
+    }
+    
+    /**
+     * Получение списка моделей с сервера (для обратной совместимости)
      */
     private async _handleGetServerModels(serverId: string, url: string, apiKey?: string) {
         try {
@@ -930,6 +985,83 @@ export class AICoderPanel {
             });
         }
     }
+    
+    /**
+     * Добавление модели к серверу
+     */
+    private async _handleAddServerModel(serverId: string, model: ServerModel) {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const serverIndex = servers.findIndex(s => s.id === serverId);
+            
+            if (serverIndex === -1) {
+                throw new Error('Сервер не найден');
+            }
+            
+            if (!servers[serverIndex].models) {
+                servers[serverIndex].models = [];
+            }
+            
+            // Проверка обязательности и уникальности названия модели
+            // displayName теперь обязателен
+            if (!model.displayName || !model.displayName.trim()) {
+                throw new Error('Пользовательское наименование модели обязательно для заполнения');
+            }
+            const modelDisplayName = model.displayName.trim();
+            
+            // Проверяем уникальность среди всех моделей всех серверов
+            // Сравниваем displayName (displayName теперь всегда задан)
+            for (const server of servers) {
+                if (server.models) {
+                    for (const existingModel of server.models) {
+                        // Сравниваем displayName (теперь он всегда задан)
+                        const existingDisplayName = existingModel.displayName?.trim() || existingModel.name.trim();
+                        // Сравниваем без учета регистра
+                        if (existingDisplayName.toLowerCase() === modelDisplayName.toLowerCase()) {
+                            throw new Error(`Модель с названием "${modelDisplayName}" уже существует`);
+                        }
+                    }
+                }
+            }
+            
+            // Создаем новую модель с уникальным ID (разрешаем добавлять одну и ту же модель несколько раз)
+            const newModel: ServerModel = {
+                id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                name: model.name,
+                displayName: modelDisplayName,
+                temperature: model.temperature,
+                maxTokens: model.maxTokens,
+                systemPrompt: model.systemPrompt,
+                active: model.active !== false
+            };
+            
+            servers[serverIndex].models!.push(newModel);
+            await this._context.workspaceState.update('llmServers', servers);
+            
+            this._panel.webview.postMessage({
+                command: 'serverModelAdded',
+                serverId: serverId,
+                model: newModel
+            });
+            
+            // Отправляем обновленный список серверов
+            setTimeout(() => {
+                this._panel.webview.postMessage({
+                    command: 'serversList',
+                    servers: servers
+                });
+                // Отправляем обновленный список активных моделей
+                this._handleGetActiveModels();
+            }, 50);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverModelAddError',
+                serverId: serverId,
+                error: errorMessage
+            });
+        }
+    }
 
     /**
      * Обновление настроек модели сервера
@@ -949,17 +1081,48 @@ export class AICoderPanel {
             
             const modelIndex = servers[serverIndex].models!.findIndex(m => m.id === model.id || m.name === model.name);
             
+            // Проверка обязательности и уникальности названия модели
+            // displayName теперь обязателен
+            if (!model.displayName || !model.displayName.trim()) {
+                throw new Error('Пользовательское наименование модели обязательно для заполнения');
+            }
+            const modelDisplayName = model.displayName.trim();
+            
+            // Проверяем уникальность среди всех моделей всех серверов (исключая текущую модель)
+            // Сравниваем displayName с displayName (displayName теперь всегда задан)
+            for (const server of servers) {
+                if (server.models) {
+                    for (const existingModel of server.models) {
+                        // Пропускаем текущую модель при обновлении
+                        if (modelIndex !== -1 && existingModel.id === servers[serverIndex].models![modelIndex].id) {
+                            continue;
+                        }
+                        const existingDisplayName = existingModel.displayName?.trim() || existingModel.name.trim();
+                        // Сравниваем без учета регистра
+                        if (existingDisplayName.toLowerCase() === modelDisplayName.toLowerCase()) {
+                            throw new Error(`Модель с названием "${modelDisplayName}" уже существует`);
+                        }
+                    }
+                }
+            }
+            
             if (modelIndex === -1) {
                 // Добавляем новую модель
                 if (!model.id) {
                     model.id = `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 }
-                servers[serverIndex].models!.push(model);
+                servers[serverIndex].models!.push({
+                    ...model,
+                    displayName: modelDisplayName
+                });
             } else {
-                // Обновляем существующую модель
+                // Обновляем существующую модель, сохраняя оригинальное имя
+                const existingModel = servers[serverIndex].models![modelIndex];
                 servers[serverIndex].models![modelIndex] = {
-                    ...servers[serverIndex].models![modelIndex],
-                    ...model
+                    ...existingModel,
+                    ...model,
+                    name: existingModel.name, // Сохраняем оригинальное имя модели
+                    displayName: modelDisplayName
                 };
             }
             
