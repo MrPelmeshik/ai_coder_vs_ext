@@ -23,7 +23,9 @@ export type WebviewCommand =
     | 'addServer'
     | 'updateServer'
     | 'deleteServer'
-    | 'checkServer';
+    | 'checkServer'
+    | 'getServerModels'
+    | 'updateServerModel';
 
 /**
  * Базовое сообщение Webview
@@ -185,6 +187,31 @@ export interface CheckServerMessage extends BaseWebviewMessage {
 }
 
 /**
+ * Сообщение получения списка моделей сервера
+ */
+export interface GetServerModelsMessage extends BaseWebviewMessage {
+    command: 'getServerModels';
+    serverId: string;
+    url: string;
+    apiKey?: string;
+}
+
+/**
+ * Сообщение обновления настроек модели сервера
+ */
+export interface UpdateServerModelMessage extends BaseWebviewMessage {
+    command: 'updateServerModel';
+    serverId: string;
+    model: {
+        id?: string;
+        name: string;
+        temperature?: number;
+        maxTokens?: number;
+        systemPrompt?: string;
+    };
+}
+
+/**
  * Объединенный тип всех сообщений Webview
  */
 export type WebviewMessage = 
@@ -205,5 +232,7 @@ export type WebviewMessage =
     | UpdateServerMessage
     | DeleteServerMessage
     | CheckServerMessage
+    | GetServerModelsMessage
+    | UpdateServerModelMessage
     | BaseWebviewMessage;
 

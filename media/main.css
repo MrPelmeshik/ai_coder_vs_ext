@@ -1161,8 +1161,8 @@ h3 {
     border-radius: 4px;
     padding: 12px;
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 0;
     transition: all 0.2s ease;
 }
 
@@ -1274,5 +1274,70 @@ h3 {
     padding: 40px 20px;
     color: var(--vscode-descriptionForeground);
     font-size: 13px;
+}
+
+/* Стили для моделей сервера */
+.server-models-container {
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 1000px;
+    }
+}
+
+.server-models-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.model-item {
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 10px;
+    transition: all 0.2s ease;
+}
+
+.model-item:hover {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.model-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.model-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+}
+
+.model-settings-preview {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.model-settings {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+.toggle-models-icon {
+    display: inline-block;
+    transition: transform 0.2s ease;
+    margin-right: 4px;
 }
 

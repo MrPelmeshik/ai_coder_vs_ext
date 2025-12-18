@@ -67,6 +67,7 @@
     const serversList = document.getElementById('servers-list');
     
     let editingServerId = null; // ID редактируемого сервера, null если создание нового
+    let modelsEditMode = {}; // Объект для хранения режима редактирования моделей для каждого сервера
 
     // Функция форматирования размера
     function formatBytes(bytes) {
@@ -1152,21 +1153,47 @@
 
             return `
                 <div class="server-item" data-server-id="${server.id}">
-                    <div class="server-info">
-                        <div class="server-name">${escapeHtml(server.name)}</div>
-                        <div class="server-url">${escapeHtml(server.url)}</div>
+                    <div class="server-main-content" style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                        <div class="server-info" style="flex: 1;">
+                            <div class="server-name">${escapeHtml(server.name)}</div>
+                            <div class="server-url">${escapeHtml(server.url)}</div>
+                        </div>
+                        ${showStatus ? `<div class="server-status ${statusClass}">${statusText}</div>` : ''}
+                        <div class="server-actions">
+                            <button class="server-action-btn check-server-btn" data-server-id="${server.id}" ${server.status === 'checking' ? 'disabled' : ''}>
+                                Проверить
+                            </button>
+                            <button class="server-action-btn toggle-models-btn" data-server-id="${server.id}">
+                                <span class="toggle-models-icon">▼</span> Модели
+                            </button>
+                            <button class="server-action-btn edit-server-btn" data-server-id="${server.id}">
+                                Редактировать
+                            </button>
+                            <button class="server-action-btn danger delete-server-btn" data-server-id="${server.id}">
+                                Удалить
+                            </button>
+                        </div>
                     </div>
-                    ${showStatus ? `<div class="server-status ${statusClass}">${statusText}</div>` : ''}
-                    <div class="server-actions">
-                        <button class="server-action-btn check-server-btn" data-server-id="${server.id}" ${server.status === 'checking' ? 'disabled' : ''}>
-                            Проверить
-                        </button>
-                        <button class="server-action-btn edit-server-btn" data-server-id="${server.id}">
-                            Редактировать
-                        </button>
-                        <button class="server-action-btn danger delete-server-btn" data-server-id="${server.id}">
-                            Удалить
-                        </button>
+                    <div class="server-models-container" data-server-id="${server.id}" style="display: none; width: 100%; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--vscode-panel-border);">
+                        <div class="server-models-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h4 style="margin: 0; font-size: 13px; font-weight: 600;">Модели сервера</h4>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="server-action-btn edit-models-mode-btn" data-server-id="${server.id}" style="display: none;">
+                                    Редактировать
+                                </button>
+                                <button class="server-action-btn view-models-mode-btn" data-server-id="${server.id}">
+                                    Просмотр
+                                </button>
+                                <button class="server-action-btn load-models-btn" data-server-id="${server.id}">
+                                    Загрузить модели
+                                </button>
+                            </div>
+                        </div>
+                        <div class="server-models-list" data-server-id="${server.id}">
+                            <div style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">
+                                Нажмите "Загрузить модели" для получения списка моделей с сервера
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1187,12 +1214,237 @@
             });
         });
 
+        serversList.querySelectorAll('.toggle-models-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const serverId = e.target.closest('[data-server-id]')?.getAttribute('data-server-id') || 
+                                e.target.getAttribute('data-server-id');
+                toggleServerModels(serverId);
+            });
+        });
+
+        serversList.querySelectorAll('.load-models-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const serverId = e.target.getAttribute('data-server-id');
+                loadServerModels(serverId);
+            });
+        });
+
+        serversList.querySelectorAll('.edit-models-mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const serverId = e.target.getAttribute('data-server-id');
+                setModelsEditMode(serverId, true);
+            });
+        });
+
+        serversList.querySelectorAll('.view-models-mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const serverId = e.target.getAttribute('data-server-id');
+                setModelsEditMode(serverId, false);
+            });
+        });
+
         serversList.querySelectorAll('.delete-server-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const serverId = e.target.getAttribute('data-server-id');
                 deleteServer(serverId);
             });
         });
+    }
+    
+    // Переключение видимости списка моделей
+    function toggleServerModels(serverId) {
+        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
+        if (!serverItem) return;
+        
+        const modelsContainer = serverItem.querySelector('.server-models-container');
+        const toggleBtn = serverItem.querySelector('.toggle-models-btn');
+        const toggleIcon = toggleBtn?.querySelector('.toggle-models-icon');
+        
+        if (modelsContainer) {
+            const isVisible = modelsContainer.style.display !== 'none';
+            modelsContainer.style.display = isVisible ? 'none' : 'block';
+            if (toggleIcon) {
+                toggleIcon.textContent = isVisible ? '▼' : '▲';
+            }
+        }
+    }
+    
+    // Загрузка моделей сервера
+    function loadServerModels(serverId) {
+        const serverForLoad = servers.find(s => s.id === serverId);
+        if (!serverForLoad) return;
+        
+        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
+        const modelsList = serverItem?.querySelector('.server-models-list');
+        
+        if (modelsList) {
+            modelsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">Загрузка моделей...</div>';
+        }
+        
+        // Запрашиваем список моделей с сервера
+        vscode.postMessage({
+            command: 'getServerModels',
+            serverId: serverId,
+            url: serverForLoad.url,
+            apiKey: serverForLoad.apiKey
+        });
+    }
+    
+    // Установка режима редактирования моделей
+    function setModelsEditMode(serverId, editMode) {
+        modelsEditMode[serverId] = editMode;
+        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
+        if (!serverItem) return;
+        
+        const modelsList = serverItem.querySelector('.server-models-list');
+        const editBtn = serverItem.querySelector('.edit-models-mode-btn');
+        const viewBtn = serverItem.querySelector('.view-models-mode-btn');
+        
+        if (editMode) {
+            if (editBtn) editBtn.style.display = 'none';
+            if (viewBtn) viewBtn.style.display = 'inline-block';
+            // Перерисовываем модели в режиме редактирования
+            const serverForEdit = servers.find(s => s.id === serverId);
+            if (serverForEdit && serverForEdit.models) {
+                renderServerModels(serverId, serverForEdit.models, true);
+            }
+        } else {
+            if (editBtn) editBtn.style.display = 'inline-block';
+            if (viewBtn) viewBtn.style.display = 'none';
+            // Перерисовываем модели в режиме просмотра
+            const serverForView = servers.find(s => s.id === serverId);
+            if (serverForView && serverForView.models) {
+                renderServerModels(serverId, serverForView.models, false);
+            }
+        }
+    }
+    
+    // Отображение списка моделей
+    function renderServerModels(serverId, models, editMode = false) {
+        const serverItem = serversList?.querySelector(`[data-server-id="${serverId}"]`);
+        const modelsList = serverItem?.querySelector('.server-models-list');
+        if (!modelsList) return;
+        
+        if (models.length === 0) {
+            modelsList.innerHTML = '<div class="empty-servers-message">Модели не найдены</div>';
+            return;
+        }
+        
+        if (editMode) {
+            // Режим редактирования - показываем настройки для каждой модели
+            modelsList.innerHTML = models.map((model, index) => {
+                const modelId = model.id || `model-${index}`;
+                return `
+                    <div class="model-item" data-model-id="${modelId}">
+                        <div class="model-info">
+                            <div class="model-name">${escapeHtml(model.name)}</div>
+                        </div>
+                        <div class="model-settings">
+                            <div class="settings-grid" style="margin-top: 12px;">
+                                <div class="setting-group">
+                                    <label>Температура:</label>
+                                    <input 
+                                        type="number" 
+                                        class="model-temperature-input setting-input" 
+                                        data-model-id="${modelId}"
+                                        min="0" 
+                                        max="2" 
+                                        step="0.1" 
+                                        value="${model.temperature !== undefined ? model.temperature : ''}"
+                                        placeholder="0.7"
+                                    />
+                                </div>
+                                <div class="setting-group">
+                                    <label>Максимум токенов:</label>
+                                    <input 
+                                        type="number" 
+                                        class="model-max-tokens-input setting-input" 
+                                        data-model-id="${modelId}"
+                                        min="100" 
+                                        max="8000" 
+                                        value="${model.maxTokens !== undefined ? model.maxTokens : ''}"
+                                        placeholder="2000"
+                                    />
+                                </div>
+                            </div>
+                            <div class="setting-group" style="margin-top: 8px;">
+                                <label>Системный промпт:</label>
+                                <textarea 
+                                    class="model-system-prompt-input setting-input" 
+                                    data-model-id="${modelId}"
+                                    rows="3"
+                                    placeholder="Оставьте пустым для использования значения по умолчанию"
+                                >${model.systemPrompt || ''}</textarea>
+                            </div>
+                            <div class="button-section" style="margin-top: 12px;">
+                                <button class="server-action-btn save-model-btn" data-server-id="${serverId}" data-model-id="${modelId}">
+                                    Сохранить настройки
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Добавляем обработчики для сохранения настроек
+            modelsList.querySelectorAll('.save-model-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const modelId = e.target.getAttribute('data-model-id');
+                    const serverId = e.target.getAttribute('data-server-id');
+                    const modelItem = modelsList.querySelector(`[data-model-id="${modelId}"]`);
+                    if (!modelItem || !serverId) return;
+                    
+                    const modelName = modelItem.querySelector('.model-name')?.textContent || '';
+                    const temperatureInput = modelItem.querySelector('.model-temperature-input');
+                    const maxTokensInput = modelItem.querySelector('.model-max-tokens-input');
+                    const systemPromptInput = modelItem.querySelector('.model-system-prompt-input');
+                    
+                    const temperature = temperatureInput && temperatureInput.value ? parseFloat(temperatureInput.value) : undefined;
+                    const maxTokens = maxTokensInput && maxTokensInput.value ? parseInt(maxTokensInput.value) : undefined;
+                    const systemPrompt = systemPromptInput ? systemPromptInput.value.trim() : undefined;
+                    
+                    vscode.postMessage({
+                        command: 'updateServerModel',
+                        serverId: serverId,
+                        model: {
+                            id: modelId,
+                            name: modelName,
+                            temperature: temperature,
+                            maxTokens: maxTokens,
+                            systemPrompt: systemPrompt
+                        }
+                    });
+                });
+            });
+        } else {
+            // Режим просмотра - просто показываем список моделей с их настройками
+            modelsList.innerHTML = models.map((model, index) => {
+                const settings = [];
+                if (model.temperature !== undefined) {
+                    settings.push(`Температура: ${model.temperature}`);
+                }
+                if (model.maxTokens !== undefined) {
+                    settings.push(`Макс. токенов: ${model.maxTokens}`);
+                }
+                if (model.systemPrompt) {
+                    settings.push(`Системный промпт: ${model.systemPrompt.substring(0, 50)}${model.systemPrompt.length > 50 ? '...' : ''}`);
+                }
+                
+                return `
+                    <div class="model-item" data-model-id="${model.id || index}">
+                        <div class="model-info">
+                            <div class="model-name">${escapeHtml(model.name)}</div>
+                            ${settings.length > 0 ? `<div class="model-settings-preview" style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 4px;">${settings.join(' • ')}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
     }
     
     // Показать форму создания/редактирования
@@ -1375,6 +1627,46 @@
                     renderServers();
                 }
                 showSettingsStatus(`Ошибка проверки сервера: ${message.error}`, 'error');
+                break;
+            case 'serverModelsList':
+                const serverWithModels = servers.find(s => s.id === message.serverId);
+                if (serverWithModels) {
+                    // Сохраняем модели в сервер
+                    serverWithModels.models = message.models || [];
+                    // Обновляем отображение
+                    const editMode = modelsEditMode[message.serverId] || false;
+                    renderServerModels(message.serverId, message.models || [], editMode);
+                }
+                break;
+            case 'serverModelsListError':
+                const serverItem = serversList?.querySelector(`[data-server-id="${message.serverId}"]`);
+                const modelsList = serverItem?.querySelector('.server-models-list');
+                if (modelsList) {
+                    modelsList.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--vscode-testing-iconFailed);">Ошибка загрузки моделей: ${message.error}</div>`;
+                }
+                break;
+            case 'serverModelUpdated':
+                showSettingsStatus('Настройки модели сохранены', 'success');
+                // Обновляем список моделей
+                const updatedServer = servers.find(s => s.id === message.serverId);
+                if (updatedServer) {
+                    // Обновляем модель в списке
+                    if (!updatedServer.models) {
+                        updatedServer.models = [];
+                    }
+                    const modelIndex = updatedServer.models.findIndex(m => (m.id && m.id === message.model.id) || m.name === message.model.name);
+                    if (modelIndex !== -1) {
+                        updatedServer.models[modelIndex] = message.model;
+                    } else {
+                        updatedServer.models.push(message.model);
+                    }
+                    // Перерисовываем
+                    const editMode = modelsEditMode[message.serverId] || false;
+                    renderServerModels(message.serverId, updatedServer.models, editMode);
+                }
+                break;
+            case 'serverModelUpdateError':
+                showSettingsStatus(`Ошибка сохранения настроек модели: ${message.error}`, 'error');
                 break;
         }
     });

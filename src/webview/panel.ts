@@ -17,6 +17,18 @@ interface LLMServer {
     url: string;
     apiKey?: string;
     status?: 'available' | 'unavailable' | 'checking';
+    models?: ServerModel[];
+}
+
+/**
+ * Интерфейс для модели сервера
+ */
+interface ServerModel {
+    id: string;
+    name: string;
+    temperature?: number;
+    maxTokens?: number;
+    systemPrompt?: string;
 }
 
 /**
@@ -123,6 +135,14 @@ export class AICoderPanel {
                     case 'updateServer':
                         const updateServerMsg = message as any;
                         this._handleUpdateServer(updateServerMsg.serverId, updateServerMsg.server);
+                        return;
+                    case 'getServerModels':
+                        const getModelsMsg = message as any;
+                        this._handleGetServerModels(getModelsMsg.serverId, getModelsMsg.url, getModelsMsg.apiKey);
+                        return;
+                    case 'updateServerModel':
+                        const updateModelMsg = message as any;
+                        this._handleUpdateServerModel(updateModelMsg.serverId, updateModelMsg.model);
                         return;
                 }
             },
@@ -760,6 +780,101 @@ export class AICoderPanel {
     }
 
     /**
+     * Получение списка моделей с сервера
+     */
+    private async _handleGetServerModels(serverId: string, url: string, apiKey?: string) {
+        try {
+            const provider = new OpenAiCompatibleProvider();
+            const models = await provider.listModels(url, apiKey);
+            
+            // Загружаем сохраненные настройки моделей для этого сервера
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const serverIndex = servers.findIndex(s => s.id === serverId);
+            
+            if (serverIndex === -1) {
+                throw new Error('Сервер не найден');
+            }
+            
+            const savedModels = servers[serverIndex].models || [];
+            
+            // Объединяем полученные модели с сохраненными настройками
+            const modelsWithSettings: ServerModel[] = models.map((modelName, index) => {
+                const savedModel = savedModels.find(m => m.name === modelName);
+                return savedModel || {
+                    id: `model-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+                    name: modelName
+                };
+            });
+            
+            // Обновляем сервер с новыми моделями
+            servers[serverIndex].models = modelsWithSettings;
+            await this._context.workspaceState.update('llmServers', servers);
+            
+            this._panel.webview.postMessage({
+                command: 'serverModelsList',
+                serverId: serverId,
+                models: modelsWithSettings
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverModelsListError',
+                serverId: serverId,
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Обновление настроек модели сервера
+     */
+    private async _handleUpdateServerModel(serverId: string, model: ServerModel) {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const serverIndex = servers.findIndex(s => s.id === serverId);
+            
+            if (serverIndex === -1) {
+                throw new Error('Сервер не найден');
+            }
+            
+            if (!servers[serverIndex].models) {
+                servers[serverIndex].models = [];
+            }
+            
+            const modelIndex = servers[serverIndex].models!.findIndex(m => m.id === model.id || m.name === model.name);
+            
+            if (modelIndex === -1) {
+                // Добавляем новую модель
+                if (!model.id) {
+                    model.id = `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                }
+                servers[serverIndex].models!.push(model);
+            } else {
+                // Обновляем существующую модель
+                servers[serverIndex].models![modelIndex] = {
+                    ...servers[serverIndex].models![modelIndex],
+                    ...model
+                };
+            }
+            
+            await this._context.workspaceState.update('llmServers', servers);
+            
+            this._panel.webview.postMessage({
+                command: 'serverModelUpdated',
+                serverId: serverId,
+                model: model
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverModelUpdateError',
+                serverId: serverId,
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
      * Обработка запроса на закрытие настроек с проверкой изменений
      */
     private async _handleRequestCloseSettings(hasChanges: boolean) {
@@ -1338,6 +1453,7 @@ export class AICoderPanel {
                                             <button id="cancel-server-btn" class="server-action-btn">Отмена</button>
                                         </div>
                                     </div>
+                                    
                                 </div>
                             </div>
                         </div>
