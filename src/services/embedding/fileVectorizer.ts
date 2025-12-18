@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path';
 import { VectorStorage, EmbeddingItem } from '../../storage/interfaces/vectorStorage';
 import { FileStatusService, FileStatus } from '../fileStatusService';
 import { LLMService, LLMConfig } from '../llmService';
@@ -34,27 +35,27 @@ export class FileVectorizer {
             summarizePrompt?: string;
         }
     ): Promise<{ processed: number; errors: number }> {
-        Logger.info(`[FileVectorizer] Начало векторизации файла: ${filePath}`);
+        // Нормализуем путь для единообразия
+        const normalizedPath = path.normalize(filePath);
+        Logger.info(`[FileVectorizer] Начало векторизации файла: ${normalizedPath}`);
         
-        const fileUri = vscode.Uri.file(filePath);
+        const fileUri = vscode.Uri.file(normalizedPath);
         const currentStatus = await this.fileStatusService.getFileStatus(fileUri);
         
         // Пропускаем исключенные файлы
         if (currentStatus === FileStatus.EXCLUDED) {
-            Logger.info(`[FileVectorizer] Файл ${filePath} исключен из обработки, пропускаем`);
+            Logger.info(`[FileVectorizer] Файл ${normalizedPath} исключен из обработки, пропускаем`);
             return { processed: 0, errors: 0 };
         }
 
         // Получаем все существующие записи один раз
-        const existingItems = await this.storage.getByPath(filePath);
+        const existingItems = await this.storage.getByPath(normalizedPath);
         const hasOrigin = existingItems.some((i: EmbeddingItem) => i.kind === 'origin');
         const hasSummarize = existingItems.some((i: EmbeddingItem) => i.kind === 'summarize');
         
         const needsOrigin = config.enableOrigin && !hasOrigin;
         const needsSummarize = config.enableSummarize && !hasSummarize;
         
-        Logger.info(`[FileVectorizer] Файл ${filePath}: enableOrigin=${config.enableOrigin}, hasOrigin=${hasOrigin}, needsOrigin=${needsOrigin}`);
-        Logger.info(`[FileVectorizer] Файл ${filePath}: enableSummarize=${config.enableSummarize}, hasSummarize=${hasSummarize}, needsSummarize=${needsSummarize}`);
         
         // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
         if (!needsOrigin && !needsSummarize) {
@@ -63,7 +64,7 @@ export class FileVectorizer {
                 (!config.enableSummarize && item.kind === 'summarize')
             );
             if (!hasItemsToDelete) {
-                Logger.info(`[FileVectorizer] Файл ${filePath} уже обработан, все необходимые векторы созданы, пропускаем`);
+                Logger.info(`[FileVectorizer] Файл ${normalizedPath} уже обработан, все необходимые векторы созданы, пропускаем`);
                 return { processed: 0, errors: 0 };
             }
         }
@@ -84,12 +85,12 @@ export class FileVectorizer {
         try {
             let content: string;
             try {
-                content = await fs.promises.readFile(filePath, 'utf-8');
+                content = await fs.promises.readFile(normalizedPath, 'utf-8');
             } catch (readError) {
                 // Ошибка чтения файла - возможно, это бинарный файл или файл с неподдерживаемой кодировкой
                 this.fileStatusService.clearProcessingStatus(fileUri);
                 const errorMessage = readError instanceof Error ? readError.message : String(readError);
-                Logger.warn(`Не удалось прочитать файл ${filePath}: ${errorMessage}. Возможно, это бинарный файл.`);
+                Logger.warn(`Не удалось прочитать файл ${normalizedPath}: ${errorMessage}. Возможно, это бинарный файл.`);
                 return { processed: 0, errors: 1 };
             }
 
@@ -99,14 +100,14 @@ export class FileVectorizer {
             // Создаем вектор по оригинальному тексту
             if (needsOrigin) {
                 try {
-                    await this._createOriginVector(filePath, content, parentId);
+                    await this._createOriginVector(normalizedPath, content, parentId);
                     processedCount++;
-                    Logger.info(`Создан origin вектор для файла ${filePath}`);
+                    Logger.info(`Создан origin вектор для файла ${normalizedPath}`);
                 } catch (error) {
                     errorCount++;
                     const errorMessage = error instanceof Error ? error.message : String(error);
                     const errorStack = error instanceof Error ? error.stack : undefined;
-                    Logger.error(`Ошибка создания origin вектора для файла ${filePath}: ${errorMessage}`, error as Error);
+                    Logger.error(`Ошибка создания origin вектора для файла ${normalizedPath}: ${errorMessage}`, error as Error);
                     if (errorStack) {
                         Logger.error(`Стек ошибки: ${errorStack}`, error as Error);
                     }
@@ -116,17 +117,13 @@ export class FileVectorizer {
             // Создаем вектор по суммаризации (независимо от результата создания origin)
             if (needsSummarize) {
                 try {
-                    await this._createSummarizeVector(filePath, content, parentId, config.summarizePrompt);
+                    await this._createSummarizeVector(normalizedPath, content, parentId, config.summarizePrompt);
                     processedCount++;
-                    Logger.info(`Создан summarize вектор для файла ${filePath}`);
+                    Logger.info(`Создан summarize вектор для файла ${normalizedPath}`);
                 } catch (error) {
                     errorCount++;
                     const errorMessage = error instanceof Error ? error.message : String(error);
-                    const errorStack = error instanceof Error ? error.stack : undefined;
-                    Logger.error(`Ошибка создания summarize вектора для файла ${filePath}: ${errorMessage}`, error as Error);
-                    if (errorStack) {
-                        Logger.error(`Стек ошибки: ${errorStack}`, error as Error);
-                    }
+                    Logger.error(`Ошибка создания summarize вектора для файла ${normalizedPath}: ${errorMessage}`, error as Error);
                 }
             }
             
@@ -136,7 +133,7 @@ export class FileVectorizer {
             this.fileStatusService.clearProcessingStatus(fileUri);
             const errorMessage = error instanceof Error ? error.message : String(error);
             const errorStack = error instanceof Error ? error.stack : undefined;
-            Logger.error(`Критическая ошибка векторизации файла ${filePath}: ${errorMessage}`, error as Error);
+            Logger.error(`Критическая ошибка векторизации файла ${normalizedPath}: ${errorMessage}`, error as Error);
             if (errorStack) {
                 Logger.error(`Стек ошибки: ${errorStack}`, error as Error);
             }
@@ -155,15 +152,11 @@ export class FileVectorizer {
     ): Promise<void> {
         try {
             const llmConfig = await this._getLLMConfig();
-            Logger.debug(`[FileVectorizer] Получение эмбеддинга для файла ${filePath}, модель: ${llmConfig.embedderModel}, провайдер: ${llmConfig.provider}`);
-            
             const originVector = await this.embeddingProvider.getEmbedding(content, llmConfig);
             
             if (!originVector || !Array.isArray(originVector) || originVector.length === 0) {
                 throw new Error('Провайдер вернул пустой или неверный вектор');
             }
-            
-            Logger.debug(`[FileVectorizer] Получен вектор размерности ${originVector.length} для файла ${filePath}`);
             
             const originItem: EmbeddingItem = {
                 id: generateGuid(),
@@ -177,7 +170,6 @@ export class FileVectorizer {
             };
 
             await this.storage.addEmbedding(originItem);
-            Logger.debug(`[FileVectorizer] Вектор успешно сохранен в хранилище для файла ${filePath}`);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             Logger.error(`[FileVectorizer] Ошибка в _createOriginVector для файла ${filePath}: ${errorMessage}`, error as Error);
@@ -195,20 +187,13 @@ export class FileVectorizer {
         summarizePrompt?: string
     ): Promise<void> {
         try {
-            Logger.debug(`[FileVectorizer] Создание суммаризации для файла ${filePath}`);
             const summary = await this.textSummarizer.summarize(content, summarizePrompt);
-            Logger.debug(`[FileVectorizer] Суммаризация создана, длина: ${summary.length} символов`);
-            
             const llmConfig = await this._getLLMConfig();
-            Logger.debug(`[FileVectorizer] Получение эмбеддинга для суммаризации файла ${filePath}, модель: ${llmConfig.embedderModel}, провайдер: ${llmConfig.provider}`);
-            
             const summarizeVector = await this.embeddingProvider.getEmbedding(summary, llmConfig);
             
             if (!summarizeVector || !Array.isArray(summarizeVector) || summarizeVector.length === 0) {
                 throw new Error('Провайдер вернул пустой или неверный вектор для суммаризации');
             }
-            
-            Logger.debug(`[FileVectorizer] Получен вектор размерности ${summarizeVector.length} для суммаризации файла ${filePath}`);
             
             const summarizeItem: EmbeddingItem = {
                 id: generateGuid(),
@@ -222,7 +207,6 @@ export class FileVectorizer {
             };
 
             await this.storage.addEmbedding(summarizeItem);
-            Logger.debug(`[FileVectorizer] Вектор суммаризации успешно сохранен в хранилище для файла ${filePath}`);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             Logger.error(`[FileVectorizer] Ошибка в _createSummarizeVector для файла ${filePath}: ${errorMessage}`, error as Error);

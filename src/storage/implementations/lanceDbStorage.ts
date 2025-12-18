@@ -687,15 +687,100 @@ export class LanceDbStorage implements VectorStorage {
             childs = [];
         }
 
+        // Преобразуем вектор из формата LanceDB (Arrow Vector) в обычный массив
+        let vector: number[] = [];
+        if (Array.isArray(data.vector)) {
+            vector = data.vector;
+        } else if (data.vector) {
+            const vectorObj = data.vector as any;
+            
+            // Пытаемся преобразовать Arrow Vector в массив
+            try {
+                // Проверяем, есть ли метод toArray (Arrow Vector)
+                if (typeof vectorObj.toArray === 'function') {
+                    const tempVector = vectorObj.toArray();
+                    vector = Array.isArray(tempVector) ? tempVector : Array.from(tempVector);
+                } 
+                // Проверяем, можно ли использовать Array.from (для итерируемых объектов)
+                else if (vectorObj.length !== undefined) {
+                    try {
+                        const tempVector = Array.from(vectorObj);
+                        vector = Array.isArray(tempVector) ? tempVector : Array.from(tempVector);
+                    } catch {
+                        // Если Array.from не работает, пытаемся получить через индексацию
+                        const length = vectorObj.length;
+                        vector = [];
+                        for (let i = 0; i < length; i++) {
+                            const value = vectorObj[i];
+                            if (value !== undefined && value !== null) {
+                                vector.push(Number(value));
+                            }
+                        }
+                    }
+                }
+                // Пытаемся использовать spread operator для итерируемых объектов
+                else if (Symbol.iterator in vectorObj) {
+                    try {
+                        const tempVector = [...vectorObj];
+                        vector = Array.isArray(tempVector) ? tempVector : Array.from(tempVector);
+                    } catch (e) {
+                        Logger.warn(`[LanceDbStorage] Не удалось использовать spread для вектора ${data.path} (${data.kind})`, e as Error);
+                    }
+                }
+                // Если ничего не помогло, пытаемся получить значения через метод get
+                else if (typeof vectorObj.get === 'function') {
+                    const length = vectorObj.length || 0;
+                    vector = [];
+                    for (let i = 0; i < length; i++) {
+                        const value = vectorObj.get(i);
+                        if (value !== undefined && value !== null) {
+                            vector.push(Number(value));
+                        }
+                    }
+                }
+                // Пытаемся получить через values() или другие методы
+                else if (typeof vectorObj.values === 'function') {
+                    try {
+                        const tempVector = Array.from(vectorObj.values());
+                        vector = Array.isArray(tempVector) ? tempVector : Array.from(tempVector);
+                    } catch (e) {
+                        Logger.warn(`[LanceDbStorage] Метод values() не сработал для ${data.path} (${data.kind})`, e as Error);
+                    }
+                }
+                // Пытаемся получить через data (Arrow Vector может хранить данные в data)
+                else if (vectorObj.data && Array.isArray(vectorObj.data)) {
+                    vector = vectorObj.data;
+                }
+                // Пытаемся получить через _data (Arrow Vector может хранить данные в _data)
+                else if (vectorObj._data && Array.isArray(vectorObj._data)) {
+                    vector = vectorObj._data;
+                }
+                else {
+                    Logger.warn(`[LanceDbStorage] Не удалось преобразовать вектор для ${data.path} (${data.kind}): тип=${typeof vectorObj}, конструктор=${vectorObj?.constructor?.name}`);
+                }
+            } catch (error) {
+                Logger.error(`[LanceDbStorage] Ошибка преобразования вектора для ${data.path} (${data.kind})`, error as Error);
+            }
+        }
+        
+        // Убеждаемся, что вектор является обычным массивом (не TypedArray)
+        if (vector && vector.length > 0 && !Array.isArray(vector)) {
+            vector = Array.from(vector as any);
+        }
+        
+        if (vector.length === 0 && data.vector) {
+            Logger.warn(`[LanceDbStorage] Вектор для ${data.path} (${data.kind}) пустой после преобразования`);
+        }
+        
         return {
             id: data.id,
             type: data.type,
-            parent: data.parent && data.parent !== '' ? data.parent : null, // Преобразуем пустую строку обратно в null
+            parent: data.parent && data.parent !== '' ? data.parent : null,
             childs: childs,
             path: data.path,
             kind: data.kind,
             raw: raw,
-            vector: Array.isArray(data.vector) ? data.vector : []
+            vector: vector
         };
     }
 }

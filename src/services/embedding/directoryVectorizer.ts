@@ -33,19 +33,21 @@ export class DirectoryVectorizer {
             enableVsSummarize: boolean;
         }
     ): Promise<{ processed: number; errors: number }> {
-        Logger.info(`[DirectoryVectorizer] Начало векторизации директории: ${dirPath}`);
+        // Нормализуем путь для единообразия
+        const normalizedPath = path.normalize(dirPath);
+        Logger.info(`[DirectoryVectorizer] Начало векторизации директории: ${normalizedPath}`);
         
-        const dirUri = vscode.Uri.file(dirPath);
+        const dirUri = vscode.Uri.file(normalizedPath);
         const currentStatus = await this.fileStatusService.getFileStatus(dirUri);
         
         // Пропускаем исключенные директории
         if (currentStatus === FileStatus.EXCLUDED) {
-            Logger.info(`[DirectoryVectorizer] Директория ${dirPath} исключена из обработки, пропускаем`);
+            Logger.info(`[DirectoryVectorizer] Директория ${normalizedPath} исключена из обработки, пропускаем`);
             return { processed: 0, errors: 0 };
         }
 
         // Получаем все существующие записи один раз
-        const existingItems = await this.storage.getByPath(dirPath);
+        const existingItems = await this.storage.getByPath(normalizedPath);
         const hasOrigin = existingItems.some((i: EmbeddingItem) => i.kind === 'origin');
         const hasVsOrigin = existingItems.some((i: EmbeddingItem) => i.kind === 'vs_origin');
         const hasVsSummarize = existingItems.some((i: EmbeddingItem) => i.kind === 'vs_summarize');
@@ -53,10 +55,6 @@ export class DirectoryVectorizer {
         const needsOrigin = config.enableOrigin && !hasOrigin;
         const needsVsOrigin = config.enableVsOrigin && !hasVsOrigin;
         const needsVsSummarize = config.enableVsSummarize && !hasVsSummarize;
-        
-        Logger.info(`[DirectoryVectorizer] Директория ${dirPath}: enableOrigin=${config.enableOrigin}, hasOrigin=${hasOrigin}, needsOrigin=${needsOrigin}`);
-        Logger.info(`[DirectoryVectorizer] Директория ${dirPath}: enableVsOrigin=${config.enableVsOrigin}, hasVsOrigin=${hasVsOrigin}, needsVsOrigin=${needsVsOrigin}`);
-        Logger.info(`[DirectoryVectorizer] Директория ${dirPath}: enableVsSummarize=${config.enableVsSummarize}, hasVsSummarize=${hasVsSummarize}, needsVsSummarize=${needsVsSummarize}`);
 
         // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
         if (!needsOrigin && !needsVsOrigin && !needsVsSummarize) {
@@ -93,12 +91,12 @@ export class DirectoryVectorizer {
             // Создаем запись для директории (origin)
             if (needsOrigin) {
                 try {
-                    await this._createOriginVector(dirPath, parentId);
+                    await this._createOriginVector(normalizedPath, parentId);
                     processedCount++;
-                    Logger.info(`Создан origin вектор для директории ${dirPath}`);
+                    Logger.info(`Создан origin вектор для директории ${normalizedPath}`);
                 } catch (error) {
                     errorCount++;
-                    Logger.error(`Ошибка создания origin вектора для директории ${dirPath}`, error as Error);
+                    Logger.error(`Ошибка создания origin вектора для директории ${normalizedPath}`, error as Error);
                 }
             }
 
@@ -106,7 +104,7 @@ export class DirectoryVectorizer {
             if (needsVsOrigin) {
                 try {
                     const created = await this._createVectorSum(
-                        dirPath,
+                        normalizedPath,
                         parentId,
                         'vs_origin',
                         'origin',
@@ -114,13 +112,13 @@ export class DirectoryVectorizer {
                     );
                     if (created) {
                         processedCount++;
-                        Logger.info(`Создан vs_origin вектор для директории ${dirPath}`);
+                        Logger.info(`Создан vs_origin вектор для директории ${normalizedPath}`);
                     } else {
-                        Logger.warn(`Не удалось создать vs_origin вектор для директории ${dirPath} - нет вложенных векторов`);
+                        Logger.warn(`Не удалось создать vs_origin вектор для директории ${normalizedPath} - нет вложенных векторов`);
                     }
                 } catch (error) {
                     errorCount++;
-                    Logger.error(`Ошибка создания vs_origin вектора для директории ${dirPath}`, error as Error);
+                    Logger.error(`Ошибка создания vs_origin вектора для директории ${normalizedPath}`, error as Error);
                 }
             }
 
@@ -128,7 +126,7 @@ export class DirectoryVectorizer {
             if (needsVsSummarize) {
                 try {
                     const created = await this._createVectorSum(
-                        dirPath,
+                        normalizedPath,
                         parentId,
                         'vs_summarize',
                         'summarize',
@@ -136,13 +134,13 @@ export class DirectoryVectorizer {
                     );
                     if (created) {
                         processedCount++;
-                        Logger.info(`Создан vs_summarize вектор для директории ${dirPath}`);
+                        Logger.info(`Создан vs_summarize вектор для директории ${normalizedPath}`);
                     } else {
-                        Logger.warn(`Не удалось создать vs_summarize вектор для директории ${dirPath} - нет вложенных векторов`);
+                        Logger.warn(`Не удалось создать vs_summarize вектор для директории ${normalizedPath} - нет вложенных векторов`);
                     }
                 } catch (error) {
                     errorCount++;
-                    Logger.error(`Ошибка создания vs_summarize вектора для директории ${dirPath}`, error as Error);
+                    Logger.error(`Ошибка создания vs_summarize вектора для директории ${normalizedPath}`, error as Error);
                 }
             }
             
@@ -152,7 +150,7 @@ export class DirectoryVectorizer {
             this.fileStatusService.clearProcessingStatus(dirUri);
             const errorMessage = error instanceof Error ? error.message : String(error);
             const errorStack = error instanceof Error ? error.stack : undefined;
-            Logger.error(`Критическая ошибка векторизации директории ${dirPath}: ${errorMessage}`, error as Error);
+            Logger.error(`Критическая ошибка векторизации директории ${normalizedPath}: ${errorMessage}`, error as Error);
             if (errorStack) {
                 Logger.error(`Стек ошибки: ${errorStack}`, error as Error);
             }
@@ -171,15 +169,11 @@ export class DirectoryVectorizer {
             const description = `Директория содержит ${fileNames.length} файлов: ${fileNames.join(', ')}`;
             
             const llmConfig = await this._getLLMConfig();
-            Logger.debug(`[DirectoryVectorizer] Получение эмбеддинга для директории ${dirPath}, модель: ${llmConfig.embedderModel}, провайдер: ${llmConfig.provider}`);
-            
             const vector = await this.embeddingProvider.getEmbedding(description, llmConfig);
             
             if (!vector || !Array.isArray(vector) || vector.length === 0) {
                 throw new Error('Провайдер вернул пустой или неверный вектор');
             }
-            
-            Logger.debug(`[DirectoryVectorizer] Получен вектор размерности ${vector.length} для директории ${dirPath}`);
             
             const dirItem: EmbeddingItem = {
                 id: generateGuid(),
@@ -193,7 +187,6 @@ export class DirectoryVectorizer {
             };
 
             await this.storage.addEmbedding(dirItem);
-            Logger.debug(`[DirectoryVectorizer] Вектор успешно сохранен в хранилище для директории ${dirPath}`);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             Logger.error(`[DirectoryVectorizer] Ошибка в _createOriginVector для директории ${dirPath}: ${errorMessage}`, error as Error);
@@ -224,7 +217,8 @@ export class DirectoryVectorizer {
             }
             
             // Проверяем, что элемент действительно вложен в эту директорию
-            if (!normalizedItemPath.startsWith(normalizedDirPath + path.sep)) {
+            const dirPathWithSep = normalizedDirPath + path.sep;
+            if (!normalizedItemPath.startsWith(dirPathWithSep)) {
                 return false;
             }
             
@@ -261,10 +255,16 @@ export class DirectoryVectorizer {
 
             await this.storage.addEmbedding(item);
             return true;
-        } else if (nestedItems.length > 0) {
-            Logger.warn(
-                `[${kind}] Нет вложенных элементов с векторами ${fileKind}/${dirKind} для директории ${dirPath}`
-            );
+        } else {
+            if (nestedItems.length > 0) {
+                Logger.warn(
+                    `[${kind}] Нет вложенных элементов с векторами ${fileKind}/${dirKind} для директории ${dirPath}. Найдено всего элементов: ${nestedItems.length}`
+                );
+            } else {
+                Logger.warn(
+                    `[${kind}] Нет вложенных элементов для директории ${dirPath}`
+                );
+            }
         }
         
         return false;
@@ -306,10 +306,12 @@ export class DirectoryVectorizer {
         try {
             const walkDir = async (currentPath: string) => {
                 try {
-                    const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+                    // Нормализуем текущий путь
+                    const normalizedCurrentPath = path.normalize(currentPath);
+                    const entries = await fs.promises.readdir(normalizedCurrentPath, { withFileTypes: true });
                     
                     for (const entry of entries) {
-                        const fullPath = path.join(currentPath, entry.name);
+                        const fullPath = path.join(normalizedCurrentPath, entry.name);
                         const normalizedFullPath = path.normalize(fullPath);
                         
                         // Пропускаем служебные директории
@@ -323,14 +325,15 @@ export class DirectoryVectorizer {
                         }
 
                         // Получаем все векторы для этого элемента из БД
-                        const items = await this.storage.getByPath(fullPath);
+                        // Используем нормализованный путь для поиска
+                        const items = await this.storage.getByPath(normalizedFullPath);
                         if (items.length > 0) {
                             nestedItems.push(...items);
                         }
 
                         // Рекурсивно обходим поддиректории
                         if (entry.isDirectory()) {
-                            await walkDir(fullPath);
+                            await walkDir(normalizedFullPath);
                         }
                     }
                 } catch (error) {
