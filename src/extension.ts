@@ -78,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Регистрация команды для открытия панели
     const openPanelCommand = vscode.commands.registerCommand('aiCoder.openPanel', () => {
         if (llmService && embeddingService) {
-            AICoderPanel.createOrShow(context.extensionUri, llmService, embeddingService);
+            AICoderPanel.createOrShow(context.extensionUri, llmService, embeddingService, context);
         }
     });
 

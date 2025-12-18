@@ -18,7 +18,12 @@ export type WebviewCommand =
     | 'getStorageCount'
     | 'alert'
     | 'showNotification'
-    | 'requestCloseSettings';
+    | 'requestCloseSettings'
+    | 'getServers'
+    | 'addServer'
+    | 'updateServer'
+    | 'deleteServer'
+    | 'checkServer';
 
 /**
  * Базовое сообщение Webview
@@ -130,6 +135,56 @@ export interface RequestCloseSettingsMessage extends BaseWebviewMessage {
 }
 
 /**
+ * Сообщение получения списка серверов
+ */
+export interface GetServersMessage extends BaseWebviewMessage {
+    command: 'getServers';
+}
+
+/**
+ * Сообщение добавления сервера
+ */
+export interface AddServerMessage extends BaseWebviewMessage {
+    command: 'addServer';
+    server: {
+        name: string;
+        url: string;
+        apiKey?: string;
+    };
+}
+
+/**
+ * Сообщение обновления сервера
+ */
+export interface UpdateServerMessage extends BaseWebviewMessage {
+    command: 'updateServer';
+    serverId: string;
+    server: {
+        name: string;
+        url: string;
+        apiKey?: string;
+    };
+}
+
+/**
+ * Сообщение удаления сервера
+ */
+export interface DeleteServerMessage extends BaseWebviewMessage {
+    command: 'deleteServer';
+    serverId: string;
+}
+
+/**
+ * Сообщение проверки сервера
+ */
+export interface CheckServerMessage extends BaseWebviewMessage {
+    command: 'checkServer';
+    serverId: string;
+    url: string;
+    apiKey?: string;
+}
+
+/**
  * Объединенный тип всех сообщений Webview
  */
 export type WebviewMessage = 
@@ -145,5 +200,10 @@ export type WebviewMessage =
     | ClearStorageMessage
     | VectorizeAllMessage
     | RequestCloseSettingsMessage
+    | GetServersMessage
+    | AddServerMessage
+    | UpdateServerMessage
+    | DeleteServerMessage
+    | CheckServerMessage
     | BaseWebviewMessage;
 

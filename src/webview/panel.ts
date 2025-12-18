@@ -9,6 +9,17 @@ import { CONFIG_KEYS } from '../constants';
 import { Logger } from '../utils/logger';
 
 /**
+ * Интерфейс для сервера LLM
+ */
+interface LLMServer {
+    id: string;
+    name: string;
+    url: string;
+    apiKey?: string;
+    status?: 'available' | 'unavailable' | 'checking';
+}
+
+/**
  * Класс для управления Webview панелью AI Coder
  */
 export class AICoderPanel {
@@ -19,13 +30,15 @@ export class AICoderPanel {
     private readonly _extensionUri: vscode.Uri;
     private readonly _llmService: LLMService;
     private readonly _embeddingService: EmbeddingService;
+    private readonly _context: vscode.ExtensionContext;
     private _disposables: vscode.Disposable[] = [];
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService, context: vscode.ExtensionContext) {
         this._panel = panel;
         this._extensionUri = extensionUri;
         this._llmService = llmService;
         this._embeddingService = embeddingService;
+        this._context = context;
 
         // Установка начального содержимого webview
         this._update();
@@ -92,6 +105,25 @@ export class AICoderPanel {
                         const closeMsg = message as RequestCloseSettingsMessage;
                         this._handleRequestCloseSettings(closeMsg.hasChanges);
                         return;
+                    case 'getServers':
+                        this._handleGetServers();
+                        return;
+                    case 'addServer':
+                        const addServerMsg = message as any;
+                        this._handleAddServer(addServerMsg.server);
+                        return;
+                    case 'deleteServer':
+                        const deleteServerMsg = message as any;
+                        this._handleDeleteServer(deleteServerMsg.serverId);
+                        return;
+                    case 'checkServer':
+                        const checkServerMsg = message as any;
+                        this._handleCheckServer(checkServerMsg.serverId, checkServerMsg.url, checkServerMsg.apiKey);
+                        return;
+                    case 'updateServer':
+                        const updateServerMsg = message as any;
+                        this._handleUpdateServer(updateServerMsg.serverId, updateServerMsg.server);
+                        return;
                 }
             },
             null,
@@ -105,7 +137,7 @@ export class AICoderPanel {
     /**
      * Создание или показ существующей панели
      */
-    public static createOrShow(extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService) {
+    public static createOrShow(extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService, context: vscode.ExtensionContext) {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
@@ -130,7 +162,7 @@ export class AICoderPanel {
             }
         );
 
-        AICoderPanel.currentPanel = new AICoderPanel(panel, extensionUri, llmService, embeddingService);
+        AICoderPanel.currentPanel = new AICoderPanel(panel, extensionUri, llmService, embeddingService, context);
     }
 
     /**
@@ -600,6 +632,134 @@ export class AICoderPanel {
     }
 
     /**
+     * Получение списка серверов
+     */
+    private async _handleGetServers() {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            this._panel.webview.postMessage({
+                command: 'serversList',
+                servers: servers
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serversList',
+                servers: [],
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Добавление нового сервера
+     */
+    private async _handleAddServer(serverData: { name: string; url: string; apiKey?: string }) {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const newServer: LLMServer = {
+                id: `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                name: serverData.name,
+                url: serverData.url,
+                apiKey: serverData.apiKey,
+                status: 'unavailable'
+            };
+            servers.push(newServer);
+            await this._context.workspaceState.update('llmServers', servers);
+            
+            this._panel.webview.postMessage({
+                command: 'serverAdded',
+                server: newServer
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverAddError',
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Обновление сервера
+     */
+    private async _handleUpdateServer(serverId: string, serverData: { name: string; url: string; apiKey?: string }) {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const serverIndex = servers.findIndex(s => s.id === serverId);
+            
+            if (serverIndex === -1) {
+                throw new Error('Сервер не найден');
+            }
+            
+            servers[serverIndex] = {
+                ...servers[serverIndex],
+                name: serverData.name,
+                url: serverData.url,
+                apiKey: serverData.apiKey
+            };
+            
+            await this._context.workspaceState.update('llmServers', servers);
+            
+            this._panel.webview.postMessage({
+                command: 'serverUpdated',
+                server: servers[serverIndex]
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverUpdateError',
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Удаление сервера
+     */
+    private async _handleDeleteServer(serverId: string) {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const filteredServers = servers.filter(s => s.id !== serverId);
+            await this._context.workspaceState.update('llmServers', filteredServers);
+            
+            this._panel.webview.postMessage({
+                command: 'serverDeleted',
+                serverId: serverId
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverDeleteError',
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Проверка подключения к серверу
+     */
+    private async _handleCheckServer(serverId: string, url: string, apiKey?: string) {
+        try {
+            const provider = new OpenAiCompatibleProvider();
+            const available = await provider.checkAvailability(url);
+            
+            this._panel.webview.postMessage({
+                command: 'serverCheckResult',
+                serverId: serverId,
+                available: available
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverCheckError',
+                serverId: serverId,
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
      * Обработка запроса на закрытие настроек с проверкой изменений
      */
     private async _handleRequestCloseSettings(hasChanges: boolean) {
@@ -919,30 +1079,36 @@ export class AICoderPanel {
                                     <button id="close-settings-btn" class="modal-close-button" title="Закрыть">×</button>
                                 </div>
                             </div>
+                            <div class="modal-tabs">
+                                <button class="modal-tab-button active" data-settings-tab="general">Общие</button>
+                                <button class="modal-tab-button" data-settings-tab="models">Модели</button>
+                            </div>
                             <div class="modal-body">
-                                <h2>Настройки LLM</h2>
-                                
-                                <div class="settings-grid">
-                                    <div class="setting-group">
-                                        <label for="provider-select">Провайдер:</label>
-                                        <select id="provider-select" class="setting-input">
-                                            <option value="openai" selected>OpenAI</option>
-                                            <option value="anthropic">Anthropic Claude</option>
-                                            <option value="ollama">Ollama</option>
-                                        </select>
-                                    </div>
+                                <!-- Вкладка "Общие" -->
+                                <div class="settings-tab-content active" id="settings-tab-general">
+                                    <h2>Настройки LLM</h2>
+                                    
+                                    <div class="settings-grid">
+                                        <div class="setting-group">
+                                            <label for="provider-select">Провайдер:</label>
+                                            <select id="provider-select" class="setting-input">
+                                                <option value="openai" selected>OpenAI</option>
+                                                <option value="anthropic">Anthropic Claude</option>
+                                                <option value="ollama">Ollama</option>
+                                            </select>
+                                        </div>
 
-                                    <div class="setting-group">
-                                        <label for="model-input">Модель LLM:</label>
-                                        <input 
-                                            type="text" 
-                                            id="model-input" 
-                                            class="setting-input"
-                                            placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
-                                        />
-                                        <small class="setting-hint">Название модели вашего провайдера</small>
+                                        <div class="setting-group">
+                                            <label for="model-input">Модель LLM:</label>
+                                            <input 
+                                                type="text" 
+                                                id="model-input" 
+                                                class="setting-input"
+                                                placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
+                                            />
+                                            <small class="setting-hint">Название модели вашего провайдера</small>
+                                        </div>
                                     </div>
-                                </div>
 
                                 <div class="setting-group">
                                     <label for="api-key-input">API Ключ:</label>
@@ -1125,6 +1291,52 @@ export class AICoderPanel {
                                             Очистка хранилища удалит все векторизованные данные. 
                                             После очистки необходимо будет заново выполнить векторизацию файлов.
                                         </p>
+                                    </div>
+                                </div>
+                                </div>
+
+                                <!-- Вкладка "Модели" -->
+                                <div class="settings-tab-content" id="settings-tab-models">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                        <h2 style="margin: 0;">Управление серверами LLM</h2>
+                                        <button id="add-server-btn" class="generate-button" style="margin: 0;">+ Добавить сервер</button>
+                                    </div>
+                                    
+                                    <div id="servers-list" class="servers-list">
+                                        <!-- Серверы будут добавлены динамически -->
+                                    </div>
+                                    
+                                    <!-- Форма создания/редактирования сервера (скрыта по умолчанию) -->
+                                    <div id="server-form-card" class="server-item server-form-card" style="display: none;">
+                                        <div class="server-info" style="flex: 1;">
+                                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                                <input 
+                                                    type="text" 
+                                                    id="server-name-input" 
+                                                    class="setting-input"
+                                                    placeholder="Наименование сервера"
+                                                    style="font-weight: 600; font-size: 13px;"
+                                                />
+                                                <input 
+                                                    type="text" 
+                                                    id="server-url-input" 
+                                                    class="setting-input"
+                                                    placeholder="URL сервера (например: http://localhost:1234/v1)"
+                                                    style="font-size: 11px; font-family: var(--vscode-editor-font-family);"
+                                                />
+                                                <input 
+                                                    type="password" 
+                                                    id="server-api-key-input" 
+                                                    class="setting-input"
+                                                    placeholder="API ключ (опционально)"
+                                                    style="font-size: 11px;"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div class="server-actions">
+                                            <button id="save-server-btn" class="server-action-btn">Сохранить</button>
+                                            <button id="cancel-server-btn" class="server-action-btn">Отмена</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

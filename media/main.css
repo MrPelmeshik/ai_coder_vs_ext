@@ -1078,3 +1078,201 @@ h3 {
     margin-top: 0;
 }
 
+/* Вкладки в модальном окне настроек */
+.modal-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-editor-background);
+    padding: 0 20px;
+}
+
+.modal-tab-button {
+    background: transparent;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: calc(var(--vscode-font-size) * 0.95);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+    position: relative;
+    font-weight: 500;
+    margin-bottom: -1px;
+}
+
+.modal-tab-button:hover {
+    color: var(--vscode-textLink-foreground);
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.modal-tab-button.active {
+    color: var(--vscode-textLink-foreground);
+    border-bottom-color: var(--vscode-textLink-foreground);
+    font-weight: 600;
+}
+
+.modal-tab-button.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--vscode-textLink-foreground);
+    opacity: 0.3;
+}
+
+.settings-tab-content {
+    display: none;
+}
+
+.settings-tab-content.active {
+    display: block;
+}
+
+/* Стили для управления серверами */
+.server-form-container {
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.server-form-container h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+}
+
+.servers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.server-item {
+    background-color: var(--vscode-list-hoverBackground);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s ease;
+}
+
+.server-item:hover {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.server-form-card {
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 2px solid var(--vscode-focusBorder);
+}
+
+.server-form-card .setting-input {
+    margin-bottom: 0;
+    padding: 6px 10px;
+    font-size: 13px;
+}
+
+.server-form-card .setting-input:first-child {
+    font-weight: 600;
+}
+
+.server-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.server-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+
+.server-url {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    word-break: break-all;
+    font-family: var(--vscode-editor-font-family);
+}
+
+.server-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.server-status.checking {
+    color: var(--vscode-descriptionForeground);
+    background-color: var(--vscode-textCodeBlock-background);
+}
+
+.server-status.available {
+    color: var(--vscode-testing-iconPassed);
+    background-color: rgba(var(--vscode-testing-iconPassed-rgb, 0, 255, 0), 0.1);
+}
+
+.server-status.unavailable {
+    color: var(--vscode-testing-iconFailed);
+    background-color: rgba(var(--vscode-testing-iconFailed-rgb, 255, 0, 0), 0.1);
+}
+
+.server-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.server-action-btn {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.server-action-btn:hover:not(:disabled) {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.server-action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.server-action-btn.danger {
+    background: var(--vscode-testing-iconFailed);
+    color: var(--vscode-foreground);
+    border-color: var(--vscode-testing-iconFailed);
+}
+
+.server-action-btn.danger:hover:not(:disabled) {
+    background: var(--vscode-testing-iconFailed);
+    opacity: 0.8;
+}
+
+.empty-servers-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+}
+

@@ -56,6 +56,18 @@
     const storageCount = document.getElementById('storage-count');
     const storageSize = document.getElementById('storage-size');
 
+    // Элементы DOM - управление серверами
+    const serverNameInput = document.getElementById('server-name-input');
+    const serverUrlInput = document.getElementById('server-url-input');
+    const serverApiKeyInput = document.getElementById('server-api-key-input');
+    const addServerBtn = document.getElementById('add-server-btn');
+    const saveServerBtn = document.getElementById('save-server-btn');
+    const cancelServerBtn = document.getElementById('cancel-server-btn');
+    const serverFormCard = document.getElementById('server-form-card');
+    const serversList = document.getElementById('servers-list');
+    
+    let editingServerId = null; // ID редактируемого сервера, null если создание нового
+
     // Функция форматирования размера
     function formatBytes(bytes) {
         if (bytes === 0) return '0 Б';
@@ -95,6 +107,28 @@
                 vscode.postMessage({
                     command: 'getAllItems'
                 });
+            }
+        });
+    });
+
+    // Управление вкладками в модальном окне настроек
+    const settingsTabButtons = document.querySelectorAll('.modal-tab-button');
+    const settingsTabContents = document.querySelectorAll('.settings-tab-content');
+    
+    settingsTabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetTab = button.getAttribute('data-settings-tab');
+            
+            // Обновление активных вкладок
+            settingsTabButtons.forEach(btn => btn.classList.remove('active'));
+            settingsTabContents.forEach(content => content.classList.remove('active'));
+            
+            button.classList.add('active');
+            document.getElementById(`settings-tab-${targetTab}`).classList.add('active');
+            
+            // При переключении на вкладку "Модели" загружаем серверы
+            if (targetTab === 'models') {
+                loadServers();
             }
         });
     });
@@ -390,6 +424,10 @@
             }, 100);
             // Всегда запрашиваем актуальную информацию о хранилище при открытии настроек
             requestStorageCount();
+            // Загружаем серверы при открытии настроек
+            setTimeout(() => {
+                loadServers();
+            }, 150);
         });
     }
     
@@ -1072,6 +1110,7 @@
         return div.innerHTML;
     }
 
+
     // Восстановление состояния при загрузке
     const previousState = vscode.getState();
     if (previousState && previousState.text) {
@@ -1082,4 +1121,262 @@
     promptInput.addEventListener('input', () => {
         vscode.setState({ text: promptInput.value });
     });
+
+    // Управление серверами LLM
+    let servers = [];
+
+    // Загрузка списка серверов при открытии настроек
+    function loadServers() {
+        vscode.postMessage({
+            command: 'getServers'
+        });
+    }
+
+    // Отображение списка серверов
+    function renderServers() {
+        if (!serversList) return;
+
+        if (servers.length === 0) {
+            serversList.innerHTML = '<div class="empty-servers-message">Серверы не добавлены</div>';
+            return;
+        }
+
+        serversList.innerHTML = servers.map((server, index) => {
+            const statusClass = server.status === 'checking' ? 'checking' : 
+                              server.status === 'available' ? 'available' : 'unavailable';
+            const statusText = server.status === 'checking' ? 'Проверка...' :
+                              server.status === 'available' ? '✓ Доступен' : '✗ Недоступен';
+            
+            // Показываем статус только если он "checking" или "available", скрываем "unavailable"
+            const showStatus = server.status === 'checking' || server.status === 'available';
+
+            return `
+                <div class="server-item" data-server-id="${server.id}">
+                    <div class="server-info">
+                        <div class="server-name">${escapeHtml(server.name)}</div>
+                        <div class="server-url">${escapeHtml(server.url)}</div>
+                    </div>
+                    ${showStatus ? `<div class="server-status ${statusClass}">${statusText}</div>` : ''}
+                    <div class="server-actions">
+                        <button class="server-action-btn check-server-btn" data-server-id="${server.id}" ${server.status === 'checking' ? 'disabled' : ''}>
+                            Проверить
+                        </button>
+                        <button class="server-action-btn edit-server-btn" data-server-id="${server.id}">
+                            Редактировать
+                        </button>
+                        <button class="server-action-btn danger delete-server-btn" data-server-id="${server.id}">
+                            Удалить
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Добавляем обработчики событий
+        serversList.querySelectorAll('.check-server-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const serverId = e.target.getAttribute('data-server-id');
+                checkServer(serverId);
+            });
+        });
+
+        serversList.querySelectorAll('.edit-server-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const serverId = e.target.getAttribute('data-server-id');
+                editServer(serverId);
+            });
+        });
+
+        serversList.querySelectorAll('.delete-server-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const serverId = e.target.getAttribute('data-server-id');
+                deleteServer(serverId);
+            });
+        });
+    }
+    
+    // Показать форму создания/редактирования
+    function showServerForm(server = null) {
+        if (!serverFormCard) return;
+        
+        editingServerId = server ? server.id : null;
+        
+        // Заполняем поля если редактируем
+        if (server) {
+            if (serverNameInput) serverNameInput.value = server.name || '';
+            if (serverUrlInput) serverUrlInput.value = server.url || '';
+            if (serverApiKeyInput) serverApiKeyInput.value = server.apiKey || '';
+        } else {
+            // Очищаем поля для нового сервера
+            if (serverNameInput) serverNameInput.value = '';
+            if (serverUrlInput) serverUrlInput.value = '';
+            if (serverApiKeyInput) serverApiKeyInput.value = '';
+        }
+        
+        // Показываем форму в начале списка
+        serverFormCard.style.display = 'flex';
+        if (serversList) {
+            serversList.insertBefore(serverFormCard, serversList.firstChild);
+        }
+        
+        // Фокус на первое поле
+        if (serverNameInput) {
+            setTimeout(() => serverNameInput.focus(), 100);
+        }
+    }
+    
+    // Скрыть форму создания/редактирования
+    function hideServerForm() {
+        if (!serverFormCard) return;
+        serverFormCard.style.display = 'none';
+        editingServerId = null;
+    }
+    
+    // Редактирование сервера
+    function editServer(serverId) {
+        const server = servers.find(s => s.id === serverId);
+        if (server) {
+            showServerForm(server);
+        }
+    }
+
+    // Показать форму добавления сервера
+    if (addServerBtn) {
+        addServerBtn.addEventListener('click', () => {
+            showServerForm();
+        });
+    }
+    
+    // Сохранение сервера (создание или редактирование)
+    if (saveServerBtn) {
+        saveServerBtn.addEventListener('click', () => {
+            const name = serverNameInput ? serverNameInput.value.trim() : '';
+            const url = serverUrlInput ? serverUrlInput.value.trim() : '';
+            const apiKey = serverApiKeyInput ? serverApiKeyInput.value.trim() : '';
+
+            if (!name) {
+                showSettingsStatus('Пожалуйста, укажите наименование сервера', 'error');
+                return;
+            }
+
+            if (!url) {
+                showSettingsStatus('Пожалуйста, укажите URL сервера', 'error');
+                return;
+            }
+
+            // Валидация URL
+            try {
+                new URL(url);
+            } catch (e) {
+                showSettingsStatus('Некорректный URL сервера', 'error');
+                return;
+            }
+
+            if (editingServerId) {
+                // Редактирование существующего сервера
+                vscode.postMessage({
+                    command: 'updateServer',
+                    serverId: editingServerId,
+                    server: {
+                        name: name,
+                        url: url,
+                        apiKey: apiKey
+                    }
+                });
+            } else {
+                // Создание нового сервера
+                vscode.postMessage({
+                    command: 'addServer',
+                    server: {
+                        name: name,
+                        url: url,
+                        apiKey: apiKey
+                    }
+                });
+            }
+
+            hideServerForm();
+        });
+    }
+    
+    // Отмена создания/редактирования
+    if (cancelServerBtn) {
+        cancelServerBtn.addEventListener('click', () => {
+            hideServerForm();
+        });
+    }
+
+    // Проверка подключения к серверу
+    function checkServer(serverId) {
+        const server = servers.find(s => s.id === serverId);
+        if (!server) return;
+
+        // Обновляем статус на "проверка"
+        server.status = 'checking';
+        renderServers();
+
+        vscode.postMessage({
+            command: 'checkServer',
+            serverId: serverId,
+            url: server.url,
+            apiKey: server.apiKey
+        });
+    }
+
+    // Удаление сервера
+    function deleteServer(serverId) {
+        vscode.postMessage({
+            command: 'deleteServer',
+            serverId: serverId
+        });
+    }
+
+    // Обработка сообщений о серверах
+    window.addEventListener('message', event => {
+        const message = event.data;
+
+        switch (message.command) {
+            case 'serversList':
+                servers = message.servers || [];
+                renderServers();
+                break;
+            case 'serverAdded':
+                showSettingsStatus('Сервер успешно добавлен', 'success');
+                loadServers();
+                break;
+            case 'serverAddError':
+                showSettingsStatus(`Ошибка добавления сервера: ${message.error}`, 'error');
+                break;
+            case 'serverUpdated':
+                showSettingsStatus('Сервер успешно обновлен', 'success');
+                loadServers();
+                break;
+            case 'serverUpdateError':
+                showSettingsStatus(`Ошибка обновления сервера: ${message.error}`, 'error');
+                break;
+            case 'serverDeleted':
+                showSettingsStatus('Сервер удален', 'success');
+                loadServers();
+                break;
+            case 'serverDeleteError':
+                showSettingsStatus(`Ошибка удаления сервера: ${message.error}`, 'error');
+                break;
+            case 'serverCheckResult':
+                const server = servers.find(s => s.id === message.serverId);
+                if (server) {
+                    server.status = message.available ? 'available' : 'unavailable';
+                    renderServers();
+                }
+                break;
+            case 'serverCheckError':
+                const serverError = servers.find(s => s.id === message.serverId);
+                if (serverError) {
+                    serverError.status = 'unavailable';
+                    renderServers();
+                }
+                showSettingsStatus(`Ошибка проверки сервера: ${message.error}`, 'error');
+                break;
+        }
+    });
+
 })();
