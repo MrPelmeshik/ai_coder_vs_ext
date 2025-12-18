@@ -1151,9 +1151,14 @@
             // Показываем статус только если он "checking" или "available", скрываем "unavailable"
             const showStatus = server.status === 'checking' || server.status === 'available';
 
+            const isActive = server.active !== false; // По умолчанию активен
             return `
-                <div class="server-item" data-server-id="${server.id}">
+                <div class="server-item ${!isActive ? 'server-inactive' : ''}" data-server-id="${server.id}">
                     <div class="server-main-content" style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                        <label class="server-active-toggle" style="display: flex; align-items: center; cursor: pointer; margin-right: 4px;">
+                            <input type="checkbox" class="server-active-checkbox" data-server-id="${server.id}" ${isActive ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                            <span style="font-size: 12px; color: var(--vscode-foreground);">Активен</span>
+                        </label>
                         <div class="server-info" style="flex: 1;">
                             <div class="server-name">${escapeHtml(server.name)}</div>
                             <div class="server-url">${escapeHtml(server.url)}</div>
@@ -1253,6 +1258,33 @@
                 deleteServer(serverId);
             });
         });
+
+        serversList.querySelectorAll('.server-active-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const serverId = e.target.getAttribute('data-server-id');
+                const isActive = e.target.checked;
+                toggleServerActive(serverId, isActive);
+            });
+        });
+    }
+    
+    // Переключение активности сервера
+    function toggleServerActive(serverId, active) {
+        vscode.postMessage({
+            command: 'toggleServerActive',
+            serverId: serverId,
+            active: active
+        });
+    }
+    
+    // Переключение активности модели
+    function toggleModelActive(serverId, modelId, active) {
+        vscode.postMessage({
+            command: 'toggleModelActive',
+            serverId: serverId,
+            modelId: modelId,
+            active: active
+        });
     }
     
     // Переключение видимости списка моделей
@@ -1338,10 +1370,17 @@
             // Режим редактирования - показываем настройки для каждой модели
             modelsList.innerHTML = models.map((model, index) => {
                 const modelId = model.id || `model-${index}`;
+                const isModelActive = model.active !== false; // По умолчанию активна
                 return `
-                    <div class="model-item" data-model-id="${modelId}">
-                        <div class="model-info">
-                            <div class="model-name">${escapeHtml(model.name)}</div>
+                    <div class="model-item ${!isModelActive ? 'model-inactive' : ''}" data-model-id="${modelId}">
+                        <div class="model-info" style="display: flex; align-items: center; gap: 12px;">
+                            <label class="model-active-toggle" style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="model-active-checkbox" data-server-id="${serverId}" data-model-id="${modelId}" ${isModelActive ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span style="font-size: 11px; color: var(--vscode-foreground);">Активна</span>
+                            </label>
+                            <div style="flex: 1;">
+                                <div class="model-name">${escapeHtml(model.name)}</div>
+                            </div>
                         </div>
                         <div class="model-settings">
                             <div class="settings-grid" style="margin-top: 12px;">
@@ -1421,9 +1460,21 @@
                     });
                 });
             });
+            
+            // Добавляем обработчики для чекбоксов активности моделей (в режиме редактирования)
+            modelsList.querySelectorAll('.model-active-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const serverId = e.target.getAttribute('data-server-id');
+                    const modelId = e.target.getAttribute('data-model-id');
+                    const isActive = e.target.checked;
+                    toggleModelActive(serverId, modelId, isActive);
+                });
+            });
         } else {
             // Режим просмотра - просто показываем список моделей с их настройками
             modelsList.innerHTML = models.map((model, index) => {
+                const modelId = model.id || `model-${index}`;
+                const isModelActive = model.active !== false; // По умолчанию активна
                 const settings = [];
                 if (model.temperature !== undefined) {
                     settings.push(`Температура: ${model.temperature}`);
@@ -1436,15 +1487,31 @@
                 }
                 
                 return `
-                    <div class="model-item" data-model-id="${model.id || index}">
-                        <div class="model-info">
-                            <div class="model-name">${escapeHtml(model.name)}</div>
-                            ${settings.length > 0 ? `<div class="model-settings-preview" style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 4px;">${settings.join(' • ')}</div>` : ''}
+                    <div class="model-item ${!isModelActive ? 'model-inactive' : ''}" data-model-id="${modelId}">
+                        <div class="model-info" style="display: flex; align-items: center; gap: 12px;">
+                            <label class="model-active-toggle" style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="model-active-checkbox" data-server-id="${serverId}" data-model-id="${modelId}" ${isModelActive ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span style="font-size: 11px; color: var(--vscode-foreground);">Активна</span>
+                            </label>
+                            <div style="flex: 1;">
+                                <div class="model-name">${escapeHtml(model.name)}</div>
+                                ${settings.length > 0 ? `<div class="model-settings-preview" style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 4px;">${settings.join(' • ')}</div>` : ''}
+                            </div>
                         </div>
                     </div>
                 `;
             }).join('');
         }
+        
+        // Добавляем обработчики для чекбоксов активности моделей
+        modelsList.querySelectorAll('.model-active-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const serverId = e.target.getAttribute('data-server-id');
+                const modelId = e.target.getAttribute('data-model-id');
+                const isActive = e.target.checked;
+                toggleModelActive(serverId, modelId, isActive);
+            });
+        });
     }
     
     // Показать форму создания/редактирования
@@ -1667,6 +1734,29 @@
                 break;
             case 'serverModelUpdateError':
                 showSettingsStatus(`Ошибка сохранения настроек модели: ${message.error}`, 'error');
+                break;
+            case 'serverActiveToggled':
+                const toggledServer = servers.find(s => s.id === message.serverId);
+                if (toggledServer) {
+                    toggledServer.active = message.active;
+                    renderServers();
+                }
+                break;
+            case 'modelActiveToggled':
+                const modelServer = servers.find(s => s.id === message.serverId);
+                if (modelServer && modelServer.models) {
+                    const model = modelServer.models.find(m => m.id === message.modelId || m.name === message.modelId);
+                    if (model) {
+                        model.active = message.active;
+                        // Перерисовываем модели
+                        const editMode = modelsEditMode[message.serverId] || false;
+                        renderServerModels(message.serverId, modelServer.models, editMode);
+                    }
+                }
+                break;
+            case 'serverToggleError':
+            case 'modelToggleError':
+                showSettingsStatus(`Ошибка переключения активности: ${message.error}`, 'error');
                 break;
         }
     });

@@ -1341,3 +1341,36 @@ h3 {
     margin-right: 4px;
 }
 
+/* Стили для неактивных серверов и моделей */
+.server-inactive {
+    opacity: 0.6;
+}
+
+.server-inactive .server-name,
+.server-inactive .server-url {
+    text-decoration: line-through;
+    color: var(--vscode-descriptionForeground);
+}
+
+.model-inactive {
+    opacity: 0.6;
+}
+
+.model-inactive .model-name {
+    text-decoration: line-through;
+    color: var(--vscode-descriptionForeground);
+}
+
+.server-active-toggle,
+.model-active-toggle {
+    user-select: none;
+}
+
+.server-active-toggle input[type="checkbox"],
+.model-active-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--vscode-button-background);
+}
+

@@ -25,7 +25,9 @@ export type WebviewCommand =
     | 'deleteServer'
     | 'checkServer'
     | 'getServerModels'
-    | 'updateServerModel';
+    | 'updateServerModel'
+    | 'toggleServerActive'
+    | 'toggleModelActive';
 
 /**
  * Базовое сообщение Webview
@@ -212,6 +214,25 @@ export interface UpdateServerModelMessage extends BaseWebviewMessage {
 }
 
 /**
+ * Сообщение переключения активности сервера
+ */
+export interface ToggleServerActiveMessage extends BaseWebviewMessage {
+    command: 'toggleServerActive';
+    serverId: string;
+    active: boolean;
+}
+
+/**
+ * Сообщение переключения активности модели сервера
+ */
+export interface ToggleModelActiveMessage extends BaseWebviewMessage {
+    command: 'toggleModelActive';
+    serverId: string;
+    modelId: string;
+    active: boolean;
+}
+
+/**
  * Объединенный тип всех сообщений Webview
  */
 export type WebviewMessage = 
@@ -234,5 +255,7 @@ export type WebviewMessage =
     | CheckServerMessage
     | GetServerModelsMessage
     | UpdateServerModelMessage
+    | ToggleServerActiveMessage
+    | ToggleModelActiveMessage
     | BaseWebviewMessage;
 

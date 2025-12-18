@@ -17,6 +17,7 @@ interface LLMServer {
     url: string;
     apiKey?: string;
     status?: 'available' | 'unavailable' | 'checking';
+    active?: boolean;
     models?: ServerModel[];
 }
 
@@ -29,6 +30,7 @@ interface ServerModel {
     temperature?: number;
     maxTokens?: number;
     systemPrompt?: string;
+    active?: boolean;
 }
 
 /**
@@ -143,6 +145,14 @@ export class AICoderPanel {
                     case 'updateServerModel':
                         const updateModelMsg = message as any;
                         this._handleUpdateServerModel(updateModelMsg.serverId, updateModelMsg.model);
+                        return;
+                    case 'toggleServerActive':
+                        const toggleServerMsg = message as any;
+                        this._handleToggleServerActive(toggleServerMsg.serverId, toggleServerMsg.active);
+                        return;
+                    case 'toggleModelActive':
+                        const toggleModelMsg = message as any;
+                        this._handleToggleModelActive(toggleModelMsg.serverId, toggleModelMsg.modelId, toggleModelMsg.active);
                         return;
                 }
             },
@@ -802,7 +812,8 @@ export class AICoderPanel {
                 const savedModel = savedModels.find(m => m.name === modelName);
                 return savedModel || {
                     id: `model-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-                    name: modelName
+                    name: modelName,
+                    active: true // По умолчанию модель активна
                 };
             });
             
@@ -869,6 +880,78 @@ export class AICoderPanel {
             this._panel.webview.postMessage({
                 command: 'serverModelUpdateError',
                 serverId: serverId,
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Переключение активности сервера
+     */
+    private async _handleToggleServerActive(serverId: string, active: boolean) {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const serverIndex = servers.findIndex(s => s.id === serverId);
+            
+            if (serverIndex === -1) {
+                throw new Error('Сервер не найден');
+            }
+            
+            servers[serverIndex].active = active;
+            await this._context.workspaceState.update('llmServers', servers);
+            
+            this._panel.webview.postMessage({
+                command: 'serverActiveToggled',
+                serverId: serverId,
+                active: active
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'serverToggleError',
+                serverId: serverId,
+                error: errorMessage
+            });
+        }
+    }
+
+    /**
+     * Переключение активности модели сервера
+     */
+    private async _handleToggleModelActive(serverId: string, modelId: string, active: boolean) {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const serverIndex = servers.findIndex(s => s.id === serverId);
+            
+            if (serverIndex === -1) {
+                throw new Error('Сервер не найден');
+            }
+            
+            if (!servers[serverIndex].models) {
+                throw new Error('Модели не найдены');
+            }
+            
+            const modelIndex = servers[serverIndex].models!.findIndex(m => m.id === modelId || m.name === modelId);
+            
+            if (modelIndex === -1) {
+                throw new Error('Модель не найдена');
+            }
+            
+            servers[serverIndex].models![modelIndex].active = active;
+            await this._context.workspaceState.update('llmServers', servers);
+            
+            this._panel.webview.postMessage({
+                command: 'modelActiveToggled',
+                serverId: serverId,
+                modelId: modelId,
+                active: active
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'modelToggleError',
+                serverId: serverId,
+                modelId: modelId,
                 error: errorMessage
             });
         }
