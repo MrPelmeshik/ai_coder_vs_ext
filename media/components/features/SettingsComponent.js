@@ -64,7 +64,6 @@ class SettingsComponent {
                 }, 100);
                 this._requestStorageCount();
                 setTimeout(() => {
-                    console.log('SettingsComponent: запрашиваем список серверов при открытии настроек');
                     this.messageBus.send('getServers');
                     this.messageBus.send('getActiveModels');
                 }, 150);
@@ -96,25 +95,20 @@ class SettingsComponent {
         
         // Переключение вкладок настроек
         this.settingsTabs.onChange((tabId) => {
-            console.log('SettingsComponent: переключение на вкладку', tabId);
             this._previousTab = tabId;
             
             if (tabId === 'models') {
-                console.log('SettingsComponent: открыта вкладка "Подключения", загружаем серверы');
                 // Переинициализируем элементы ServerManagementComponent при открытии вкладки
                 // Используем задержку, чтобы убедиться, что DOM обновился и вкладка стала видимой
                 setTimeout(() => {
                     if (window.serverManagementComponent && typeof window.serverManagementComponent._initializeElements === 'function') {
-                        console.log('SettingsComponent: переинициализируем элементы ServerManagementComponent');
                         window.serverManagementComponent._initializeElements();
                         // Также переинициализируем обработчики событий
                         if (typeof window.serverManagementComponent._initializeEventListeners === 'function') {
-                            console.log('SettingsComponent: переинициализируем обработчики событий ServerManagementComponent');
                             window.serverManagementComponent._initializeEventListeners();
                         }
                         // Принудительно перерисовываем серверы при открытии вкладки
                         if (typeof window.serverManagementComponent._renderServers === 'function') {
-                            console.log('SettingsComponent: принудительно перерисовываем серверы при открытии вкладки');
                             window.serverManagementComponent._renderServers();
                         }
                     }
@@ -183,8 +177,27 @@ class SettingsComponent {
             }
             if (this.storageSize) {
                 const size = message.size || 0;
-                // formatBytes будет доступен из domUtils.js
-                this.storageSize.textContent = formatBytes(size);
+                try {
+                    // formatBytes будет доступен из domUtils.js, но если нет - используем inline функцию
+                    let formatBytesFn = window.formatBytes || (typeof formatBytes !== 'undefined' ? formatBytes : null);
+                    
+                    // Если функция все еще недоступна, создаем inline версию
+                    if (!formatBytesFn) {
+                        formatBytesFn = (bytes) => {
+                            if (bytes === 0) return '0 Б';
+                            const k = 1024;
+                            const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+                            const i = Math.floor(Math.log(bytes) / Math.log(k));
+                            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+                        };
+                    }
+                    
+                    const formattedSize = formatBytesFn(size);
+                    this.storageSize.textContent = formattedSize;
+                } catch (error) {
+                    // Fallback: просто показываем размер в байтах
+                    this.storageSize.textContent = `${size} Б`;
+                }
             }
         });
         

@@ -25,7 +25,6 @@ class Tabs {
      */
     _initialize() {
         if (!this.container) {
-            console.warn('Tabs: контейнер не найден', this.container);
             return;
         }
         
@@ -55,12 +54,6 @@ class Tabs {
             this.tabContents = Array.from(document.querySelectorAll(this.options.tabContentSelector));
         }
         
-        if (this.tabButtons.length === 0) {
-            console.warn('Tabs: кнопки вкладок не найдены', this.options.tabButtonSelector);
-        }
-        if (this.tabContents.length === 0) {
-            console.warn('Tabs: контент вкладок не найден', this.options.tabContentSelector);
-        }
         
         // Находим активную вкладку по умолчанию
         const activeButton = this.tabButtons.find(btn => btn.classList.contains(this.options.activeClass));
@@ -122,13 +115,6 @@ class Tabs {
             if (this.options.onTabChange) {
                 this.options.onTabChange(tabId);
             }
-        } else {
-            console.warn('Tabs: не найдены кнопка или контент для вкладки', tabId, {
-                targetButton: !!targetButton,
-                targetContent: !!targetContent,
-                buttonsCount: this.tabButtons.length,
-                contentsCount: this.tabContents.length
-            });
         }
     }
     

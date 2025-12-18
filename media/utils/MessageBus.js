@@ -17,7 +17,7 @@ class MessageBus {
                     try {
                         callback(message);
                     } catch (error) {
-                        console.error(`Error in subscriber for command "${command}":`, error);
+                        // Ошибка в подписчике - игнорируем для предотвращения каскадных ошибок
                     }
                 });
             }

@@ -131,6 +131,28 @@ export interface ClearStorageMessage extends BaseWebviewMessage {
  */
 export interface VectorizeAllMessage extends BaseWebviewMessage {
     command: 'vectorizeAll';
+    embedderModel?: {
+        serverId: string;
+        modelId: string;
+        url: string;
+        apiKey?: string;
+        modelName: string;
+    };
+    summarizeModel?: {
+        serverId: string;
+        modelId: string;
+        url: string;
+        apiKey?: string;
+        modelName: string;
+        temperature?: number;
+        maxTokens?: number;
+        systemPrompt?: string;
+    } | null;
+    enableOrigin?: boolean;
+    enableSummarize?: boolean;
+    enableVsOrigin?: boolean;
+    enableVsSummarize?: boolean;
+    summarizePrompt?: string;
 }
 
 /**

@@ -84,10 +84,8 @@ export class EmbeddingService {
         Logger.debug(`[EmbeddingService] Проверка инициализации: _isInitialized=${this._isInitialized}, _embeddingProvider=${!!this._embeddingProvider}, _fileVectorizer=${!!this._fileVectorizer}, _directoryVectorizer=${!!this._directoryVectorizer}`);
         
         if (!this._isInitialized || !this._embeddingProvider || !this._fileVectorizer || !this._directoryVectorizer) {
-            Logger.info('[EmbeddingService] Сервис не инициализирован, выполняется инициализация...');
             try {
                 await this.initialize();
-                Logger.info('[EmbeddingService] Инициализация завершена успешно');
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 const errorStack = error instanceof Error ? error.stack : undefined;
@@ -113,10 +111,8 @@ export class EmbeddingService {
         }
 
         // Проверяем и инициализируем сервис при необходимости
-        Logger.info('[EmbeddingService] Проверка инициализации сервиса...');
         try {
             await this._ensureInitialized();
-            Logger.info('[EmbeddingService] Сервис инициализирован');
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             Logger.error(`[EmbeddingService] Ошибка при инициализации: ${errorMessage}`, error as Error);
@@ -135,16 +131,11 @@ export class EmbeddingService {
             }
 
             const rootPath = folder.uri.fsPath;
-            Logger.info(`[EmbeddingService] Корневой путь: ${rootPath}`);
             
             // Получаем конфигурацию для модели эмбеддинга
-            Logger.info('[EmbeddingService] Получение конфигурации LLM...');
             const config = await this._llmService.getConfig();
-            Logger.info(`[EmbeddingService] Конфигурация получена: provider=${config.provider}, embedderModel=${config.embedderModel}`);
             
-            Logger.info('[EmbeddingService] Валидация конфигурации эмбеддинга...');
             ConfigValidator.validateEmbeddingConfig(config);
-            Logger.info('[EmbeddingService] Конфигурация валидна');
 
             // Получаем настройки векторизации
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
@@ -164,8 +155,6 @@ export class EmbeddingService {
                 summarizePrompt
             };
             
-            Logger.info(`[EmbeddingService] Конфигурация векторизации: enableOrigin=${vectorizationConfig.enableOrigin}, enableSummarize=${vectorizationConfig.enableSummarize}, enableVsOrigin=${vectorizationConfig.enableVsOrigin}, enableVsSummarize=${vectorizationConfig.enableVsSummarize}`);
-
             // Собираем все элементы с их глубиной вложенности
             const itemsToProcess: Array<{
                 path: string;
@@ -175,13 +164,10 @@ export class EmbeddingService {
             }> = [];
 
             // Рекурсивно собираем все файлы и директории
-            Logger.info('[EmbeddingService] Сбор файлов и директорий...');
             await this._collectItems(rootPath, null, 0, itemsToProcess);
-            Logger.info(`[EmbeddingService] Собрано элементов для обработки: ${itemsToProcess.length}`);
 
             // Сортируем по глубине: сначала самые глубокие (максимальная вложенность)
             itemsToProcess.sort((a, b) => b.depth - a.depth);
-            Logger.info('[EmbeddingService] Начало обработки элементов...');
 
             // Обрабатываем элементы в порядке от максимальной вложенности к корню
             Logger.info(`[EmbeddingService] Начинаем обработку ${itemsToProcess.length} элементов`);
@@ -208,7 +194,6 @@ export class EmbeddingService {
                     }
 
                     if (item.type === 'file') {
-                        Logger.info(`[EmbeddingService] Вызов vectorizeFile для: ${item.path}`);
                         const result = await this._fileVectorizer.vectorizeFile(
                             item.path,
                             parentId,
@@ -219,11 +204,9 @@ export class EmbeddingService {
                                 summarizePrompt: vectorizationConfig.summarizePrompt
                             }
                         );
-                        Logger.info(`[EmbeddingService] Результат vectorizeFile для ${item.path}: processed=${result.processed}, errors=${result.errors}`);
                         processed += result.processed;
                         errors += result.errors;
                     } else {
-                        Logger.info(`[EmbeddingService] Вызов vectorizeDirectory для: ${item.path}`);
                         const result = await this._directoryVectorizer.vectorizeDirectory(
                             item.path,
                             parentId,
@@ -234,7 +217,6 @@ export class EmbeddingService {
                                 enableVsSummarize: vectorizationConfig.enableVsSummarize
                             }
                         );
-                        Logger.info(`[EmbeddingService] Результат vectorizeDirectory для ${item.path}: processed=${result.processed}, errors=${result.errors}`);
                         processed += result.processed;
                         errors += result.errors;
                     }
@@ -249,8 +231,6 @@ export class EmbeddingService {
                 }
             }
 
-            Logger.info(`[EmbeddingService] Векторизация завершена. Обработано: ${processed}, Ошибок: ${errors}`);
-
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             const errorStack = error instanceof Error ? error.stack : undefined;
@@ -261,7 +241,6 @@ export class EmbeddingService {
             throw error;
         } finally {
             this._isProcessing = false;
-            Logger.info('[EmbeddingService] Флаг обработки сброшен');
         }
 
         return { processed, errors };

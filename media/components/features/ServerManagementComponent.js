@@ -50,13 +50,10 @@ class ServerManagementComponent {
             // Используем именованную функцию для возможности удаления
             if (!this._addServerHandler) {
                 this._addServerHandler = () => {
-                    console.log('ServerManagementComponent: клик по кнопке добавления сервера');
                     this._showServerForm();
                 };
             }
             this.addServerBtn.onClick(this._addServerHandler);
-        } else {
-            console.warn('ServerManagementComponent: кнопка add-server-btn не найдена');
         }
         
         const saveServerBtnElement = document.getElementById('save-server-btn');
@@ -121,7 +118,6 @@ class ServerManagementComponent {
         if (this.addServerBtn && this.addServerBtn.element) {
             if (!this._addServerHandler) {
                 this._addServerHandler = () => {
-                    console.log('ServerManagementComponent: клик по кнопке добавления сервера (из _initializeEventListeners)');
                     this._showServerForm();
                 };
             }
@@ -151,17 +147,11 @@ class ServerManagementComponent {
     _subscribeToMessages() {
         // Список серверов
         this.messageBus.subscribe('serversList', (message) => {
-            console.log('ServerManagementComponent: получен список серверов', message.servers?.length || 0, message);
             // Переинициализируем элементы перед рендерингом
             this._initializeElements();
             
             // Обновляем список серверов (это источник истины)
-            const newServers = message.servers || [];
-            const beforeCount = this.servers.length;
-            this.servers = newServers;
-            
-            console.log('ServerManagementComponent: серверы установлены в локальный массив:', this.servers.length, `(было: ${beforeCount})`);
-            console.log('ServerManagementComponent: детали серверов:', this.servers.map(s => ({ id: s.id, name: s.name, active: s.active, modelsCount: s.models?.length || 0 })));
+            this.servers = message.servers || [];
             
             // Всегда перерисовываем при получении актуального списка
             // Используем небольшую задержку, чтобы убедиться, что DOM готов
@@ -295,7 +285,6 @@ class ServerManagementComponent {
         
         // Сервер добавлен
         this.messageBus.subscribe('serverAdded', (message) => {
-            console.log('ServerManagementComponent: получено сообщение serverAdded', message);
             // Скрываем форму перед обновлением списка
             this._hideServerForm();
             
@@ -304,21 +293,13 @@ class ServerManagementComponent {
             
             // Проверяем, что элемент доступен
             const serversList = this._getServersList();
-            if (!serversList) {
-                console.warn('ServerManagementComponent: servers-list не найден, возможно вкладка "Подключения" не открыта');
-                console.warn('ServerManagementComponent: полагаемся на сообщение serversList для обновления');
-            } else {
+            if (serversList && message.server) {
                 // Добавляем новый сервер в локальный список сразу для мгновенного обновления
-                if (message.server) {
-                    // Проверяем, нет ли уже такого сервера (на случай дублирования событий)
-                    const exists = this.servers.find(s => s.id === message.server.id);
-                    if (!exists) {
-                        this.servers.push(message.server);
-                        console.log('ServerManagementComponent: сервер добавлен в локальный список, всего серверов:', this.servers.length);
-                        this._renderServers();
-                    } else {
-                        console.log('ServerManagementComponent: сервер уже существует в списке, пропускаем добавление');
-                    }
+                // Проверяем, нет ли уже такого сервера (на случай дублирования событий)
+                const exists = this.servers.find(s => s.id === message.server.id);
+                if (!exists) {
+                    this.servers.push(message.server);
+                    this._renderServers();
                 }
             }
             
@@ -346,12 +327,10 @@ class ServerManagementComponent {
                 const index = this.servers.findIndex(s => s.id === message.server.id);
                 if (index !== -1) {
                     this.servers[index] = message.server;
-                    console.log('ServerManagementComponent: сервер обновлен в локальном списке');
                     this._renderServers();
                 } else {
                     // Если сервер не найден, добавляем его
                     this.servers.push(message.server);
-                    console.log('ServerManagementComponent: сервер добавлен в локальный список (при обновлении)');
                     this._renderServers();
                 }
             }
@@ -374,9 +353,7 @@ class ServerManagementComponent {
             
             // Удаляем сервер из локального списка
             if (message.serverId) {
-                const beforeCount = this.servers.length;
                 this.servers = this.servers.filter(s => s.id !== message.serverId);
-                console.log(`ServerManagementComponent: сервер удален из локального списка (было: ${beforeCount}, стало: ${this.servers.length})`);
                 this._renderServers();
             }
             
@@ -406,43 +383,23 @@ class ServerManagementComponent {
      * Отображение списка серверов
      */
     _renderServers() {
-        console.log('ServerManagementComponent: _renderServers вызван, серверов:', this.servers.length);
-        console.log('ServerManagementComponent: список серверов:', this.servers.map(s => ({ id: s.id, name: s.name, active: s.active })));
-        
         // Получаем элемент списка с проверкой
         let serversList = this._getServersList();
         if (!serversList) {
-            console.warn('ServerManagementComponent: serversList элемент не найден, пытаемся найти позже...');
             // Пытаемся переинициализировать элементы
             this._initializeElements();
             serversList = this._getServersList();
             if (!serversList) {
-                console.error('ServerManagementComponent: serversList элемент не найден после повторной попытки');
-                console.error('ServerManagementComponent: пытаемся найти элемент напрямую...');
                 // Пробуем найти элемент напрямую
                 const directElement = document.getElementById('servers-list');
                 if (directElement) {
-                    console.log('ServerManagementComponent: элемент найден напрямую!');
                     this.serversList = directElement;
                     serversList = directElement;
                 } else {
-                    console.error('ServerManagementComponent: элемент не найден даже напрямую');
                     // НЕ возвращаемся - сохраняем данные для последующего рендеринга
-                    console.warn('ServerManagementComponent: данные сохранены, рендеринг будет выполнен при открытии вкладки');
                     return;
                 }
             }
-        }
-        
-        // Проверяем, виден ли элемент (его родительская вкладка активна)
-        const tabContent = serversList.closest('.settings-tab-content');
-        const isVisible = !tabContent || tabContent.classList.contains('active');
-        const displayStyle = window.getComputedStyle(serversList).display;
-        const parentDisplay = tabContent ? window.getComputedStyle(tabContent).display : 'unknown';
-        
-        if (!isVisible) {
-            console.log('ServerManagementComponent: элемент скрыт (вкладка не активна), но данные будут отрендерены');
-            // Продолжаем рендеринг, даже если элемент скрыт - данные должны быть установлены
         }
         
         // Сохраняем форму, если она находится в списке, чтобы не потерять её при установке innerHTML
@@ -452,8 +409,6 @@ class ServerManagementComponent {
         
         if (this.servers.length === 0) {
             serversList.innerHTML = '<div class="empty-servers-message">Серверы не добавлены</div>';
-            console.log('ServerManagementComponent: отображено сообщение "Серверы не добавлены"');
-            console.log('ServerManagementComponent: элемент виден:', isVisible);
             
             // Восстанавливаем форму, если она была в списке
             if (formWasInList && formCard) {
@@ -467,7 +422,6 @@ class ServerManagementComponent {
         try {
             html = this.servers.map(server => this._buildServerHTML(server)).join('');
         } catch (error) {
-            console.error('ServerManagementComponent: ошибка при построении HTML:', error);
             return;
         }
         
@@ -487,12 +441,6 @@ class ServerManagementComponent {
                 formCard.style.display = 'none';
             }
         }
-        
-        console.log('ServerManagementComponent: серверы отрендерены, HTML длина:', html.length);
-        console.log('ServerManagementComponent: HTML превью:', html.substring(0, 200));
-        console.log('ServerManagementComponent: элемент виден:', isVisible);
-        console.log('ServerManagementComponent: элемент serversList:', serversList);
-        console.log('ServerManagementComponent: innerHTML установлен, длина:', serversList.innerHTML.length);
         
         this._attachServerHandlers();
     }
@@ -564,7 +512,6 @@ class ServerManagementComponent {
     _attachServerHandlers() {
         const serversList = this._getServersList();
         if (!serversList) {
-            console.warn('ServerManagementComponent: не могу прикрепить обработчики, serversList не найден');
             return;
         }
         
@@ -1167,9 +1114,7 @@ class ServerManagementComponent {
      * Показать форму сервера
      */
     _showServerForm(server = null) {
-        console.log('ServerManagementComponent: _showServerForm вызван', server ? server.id : 'new');
         if (!this.serverFormCard) {
-            console.warn('ServerManagementComponent: serverFormCard не найден');
             return;
         }
         

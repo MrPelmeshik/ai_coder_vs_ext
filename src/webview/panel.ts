@@ -99,7 +99,8 @@ export class AICoderPanel {
                         }
                         return;
                     case 'vectorizeAll':
-                        this._handleVectorizeAll();
+                        const vectorizeMsg = message as VectorizeAllMessage;
+                        this._handleVectorizeAll(vectorizeMsg);
                         return;
                     case 'search':
                         const searchMsg = message as SearchMessage;
@@ -434,8 +435,37 @@ export class AICoderPanel {
     /**
      * Обработка команды векторизации всех файлов
      */
-    private async _handleVectorizeAll() {
-        Logger.info('[AICoderPanel] Начало обработки команды векторизации');
+    private async _handleVectorizeAll(vectorizeMessage?: VectorizeAllMessage) {
+        // Сохраняем конфигурацию из сообщения перед векторизацией
+        if (vectorizeMessage) {
+            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+            
+            // Сохраняем настройки векторизации
+            if (vectorizeMessage.enableOrigin !== undefined) {
+                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN, vectorizeMessage.enableOrigin, vscode.ConfigurationTarget.Global);
+            }
+            if (vectorizeMessage.enableSummarize !== undefined) {
+                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE, vectorizeMessage.enableSummarize, vscode.ConfigurationTarget.Global);
+            }
+            if (vectorizeMessage.enableVsOrigin !== undefined) {
+                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN, vectorizeMessage.enableVsOrigin, vscode.ConfigurationTarget.Global);
+            }
+            if (vectorizeMessage.enableVsSummarize !== undefined) {
+                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE, vectorizeMessage.enableVsSummarize, vscode.ConfigurationTarget.Global);
+            }
+            if (vectorizeMessage.summarizePrompt !== undefined) {
+                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT, vectorizeMessage.summarizePrompt, vscode.ConfigurationTarget.Global);
+            }
+            
+            // Обновляем конфигурацию модели эмбеддинга и суммаризации, если они переданы
+            if (vectorizeMessage.embedderModel) {
+                const currentConfig = await this._llmService.getConfig();
+                await this._llmService.updateConfig({
+                    ...currentConfig,
+                    embedderModel: vectorizeMessage.embedderModel.modelName
+                });
+            }
+        }
         
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
@@ -443,8 +473,6 @@ export class AICoderPanel {
             vscode.window.showErrorMessage('Не открыта рабочая область');
             return;
         }
-
-        Logger.info(`[AICoderPanel] Рабочая область: ${workspaceFolder.uri.fsPath}`);
 
         // Запрашиваем подтверждение
         const action = await vscode.window.showWarningMessage(
@@ -455,11 +483,8 @@ export class AICoderPanel {
         );
 
         if (action !== 'Да') {
-            Logger.info('[AICoderPanel] Пользователь отменил векторизацию');
             return;
         }
-
-        Logger.info('[AICoderPanel] Пользователь подтвердил векторизацию, запуск процесса...');
 
         // Показываем прогресс
         vscode.window.withProgress({
@@ -468,16 +493,10 @@ export class AICoderPanel {
             cancellable: true
         }, async (progress, token) => {
             progress.report({ increment: 0, message: "Начало векторизации..." });
-            Logger.info('[AICoderPanel] Прогресс-бар создан, вызов vectorizeAllUnprocessed...');
 
             try {
-                let lastProcessed = 0;
-                let lastErrors = 0;
-
-                Logger.info('[AICoderPanel] Вызов embeddingService.vectorizeAllUnprocessed...');
                 // Запускаем векторизацию
                 const result = await this._embeddingService.vectorizeAllUnprocessed(workspaceFolder);
-                Logger.info(`[AICoderPanel] vectorizeAllUnprocessed завершен: processed=${result.processed}, errors=${result.errors}`);
 
                 progress.report({ increment: 100, message: "Готово!" });
 
@@ -490,10 +509,12 @@ export class AICoderPanel {
                     }
                 });
 
-                Logger.info(`[AICoderPanel] Показ сообщения пользователю: Обработано: ${result.processed}, Ошибок: ${result.errors}`);
                 vscode.window.showInformationMessage(
                     `Векторизация завершена. Обработано: ${result.processed}, Ошибок: ${result.errors}`
                 );
+                
+                // Обновляем размер хранилища после векторизации
+                this._handleGetStorageCount();
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
                 const errorStack = error instanceof Error ? error.stack : undefined;
@@ -639,6 +660,9 @@ export class AICoderPanel {
                 });
 
                 vscode.window.showInformationMessage('Хранилище эмбеддингов успешно очищено');
+                
+                // Обновляем размер хранилища после очистки
+                this._handleGetStorageCount();
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
                 vscode.window.showErrorMessage(`Ошибка очистки хранилища: ${errorMessage}`);

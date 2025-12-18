@@ -37,14 +37,12 @@ export class FileVectorizer {
     ): Promise<{ processed: number; errors: number }> {
         // Нормализуем путь для единообразия
         const normalizedPath = path.normalize(filePath);
-        Logger.info(`[FileVectorizer] Начало векторизации файла: ${normalizedPath}`);
         
         const fileUri = vscode.Uri.file(normalizedPath);
         const currentStatus = await this.fileStatusService.getFileStatus(fileUri);
         
         // Пропускаем исключенные файлы
         if (currentStatus === FileStatus.EXCLUDED) {
-            Logger.info(`[FileVectorizer] Файл ${normalizedPath} исключен из обработки, пропускаем`);
             return { processed: 0, errors: 0 };
         }
 
@@ -56,7 +54,6 @@ export class FileVectorizer {
         const needsOrigin = config.enableOrigin && !hasOrigin;
         const needsSummarize = config.enableSummarize && !hasSummarize;
         
-        
         // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
         if (!needsOrigin && !needsSummarize) {
             const hasItemsToDelete = existingItems.some(item => 
@@ -64,7 +61,6 @@ export class FileVectorizer {
                 (!config.enableSummarize && item.kind === 'summarize')
             );
             if (!hasItemsToDelete) {
-                Logger.info(`[FileVectorizer] Файл ${normalizedPath} уже обработан, все необходимые векторы созданы, пропускаем`);
                 return { processed: 0, errors: 0 };
             }
         }
@@ -102,7 +98,6 @@ export class FileVectorizer {
                 try {
                     await this._createOriginVector(normalizedPath, content, parentId);
                     processedCount++;
-                    Logger.info(`Создан origin вектор для файла ${normalizedPath}`);
                 } catch (error) {
                     errorCount++;
                     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -119,7 +114,6 @@ export class FileVectorizer {
                 try {
                     await this._createSummarizeVector(normalizedPath, content, parentId, config.summarizePrompt);
                     processedCount++;
-                    Logger.info(`Создан summarize вектор для файла ${normalizedPath}`);
                 } catch (error) {
                     errorCount++;
                     const errorMessage = error instanceof Error ? error.message : String(error);

@@ -25,6 +25,9 @@ function formatBytes(bytes) {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
+// Делаем функцию доступной глобально для использования в других скриптах
+window.formatBytes = formatBytes;
+
 /**
  * Создание элемента с атрибутами
  */
