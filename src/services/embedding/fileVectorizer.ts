@@ -50,6 +50,9 @@ export class FileVectorizer {
         const needsOrigin = config.enableOrigin && !hasOrigin;
         const needsSummarize = config.enableSummarize && !hasSummarize;
         
+        Logger.info(`[FileVectorizer] Файл ${filePath}: enableOrigin=${config.enableOrigin}, hasOrigin=${hasOrigin}, needsOrigin=${needsOrigin}`);
+        Logger.info(`[FileVectorizer] Файл ${filePath}: enableSummarize=${config.enableSummarize}, hasSummarize=${hasSummarize}, needsSummarize=${needsSummarize}`);
+        
         // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
         if (!needsOrigin && !needsSummarize) {
             const hasItemsToDelete = existingItems.some(item => 
@@ -77,21 +80,34 @@ export class FileVectorizer {
         try {
             const content = await fs.promises.readFile(filePath, 'utf-8');
             let processedCount = 0;
+            let errorCount = 0;
 
             // Создаем вектор по оригинальному тексту
             if (needsOrigin) {
-                await this._createOriginVector(filePath, content, parentId);
-                processedCount++;
+                try {
+                    await this._createOriginVector(filePath, content, parentId);
+                    processedCount++;
+                    Logger.info(`Создан origin вектор для файла ${filePath}`);
+                } catch (error) {
+                    errorCount++;
+                    Logger.error(`Ошибка создания origin вектора для файла ${filePath}`, error as Error);
+                }
             }
 
-            // Создаем вектор по суммаризации
+            // Создаем вектор по суммаризации (независимо от результата создания origin)
             if (needsSummarize) {
-                await this._createSummarizeVector(filePath, content, parentId, config.summarizePrompt);
-                processedCount++;
+                try {
+                    await this._createSummarizeVector(filePath, content, parentId, config.summarizePrompt);
+                    processedCount++;
+                    Logger.info(`Создан summarize вектор для файла ${filePath}`);
+                } catch (error) {
+                    errorCount++;
+                    Logger.error(`Ошибка создания summarize вектора для файла ${filePath}`, error as Error);
+                }
             }
             
             this.fileStatusService.clearProcessingStatus(fileUri);
-            return { processed: processedCount, errors: 0 };
+            return { processed: processedCount, errors: errorCount };
         } catch (error) {
             this.fileStatusService.clearProcessingStatus(fileUri);
             Logger.error(`Ошибка векторизации файла ${filePath}`, error as Error);

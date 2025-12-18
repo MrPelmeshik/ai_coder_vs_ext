@@ -2,27 +2,47 @@ import { LLMConfig } from '../llmService';
 import { CONFIG_KEYS } from '../../constants';
 import { ApiErrorHandler } from '../../utils/errorHandler';
 import { Logger } from '../../utils/logger';
-import { EmbeddingError } from '../../errors';
+import { EmbeddingError, ConfigError } from '../../errors';
 import { ConfigValidator } from '../../utils/validators';
 import { ConfigReader } from '../../utils/configReader';
 import * as vscode from 'vscode';
 
 /**
  * Интерфейс провайдера эмбеддингов
+ * Определяет метод получения векторного представления текста
  */
 export interface EmbeddingProvider {
+    /**
+     * Получение векторного представления текста
+     * 
+     * @param text - Текст для векторизации
+     * @param config - Конфигурация LLM
+     * @returns Массив чисел (вектор)
+     */
     getEmbedding(text: string, config: LLMConfig): Promise<number[]>;
 }
 
 /**
  * Провайдер эмбеддингов через Ollama
+ * Использует локальный Ollama API для получения векторных представлений
  */
 export class OllamaEmbeddingProvider implements EmbeddingProvider {
+    /**
+     * Получение эмбеддинга через Ollama API
+     * 
+     * @param text - Текст для векторизации
+     * @param config - Конфигурация LLM (должен содержать localUrl и embedderModel)
+     * @returns Векторное представление текста
+     */
     async getEmbedding(text: string, config: LLMConfig): Promise<number[]> {
-        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
-        const localUrl = config.localUrl || defaultOllamaUrl;
-        const model = config.embedderModel || '';
+        if (!config.localUrl) {
+            throw new ConfigError('localUrl не указан в настройках для провайдера ollama');
+        }
+        const localUrl = config.localUrl;
+        if (!config.embedderModel) {
+            throw new ConfigError('Модель эмбеддинга не указана в настройках');
+        }
+        const model = config.embedderModel;
         const url = `${localUrl}/api/embeddings`;
 
         const fetch = (await import('node-fetch')).default;
@@ -62,13 +82,25 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
 /**
  * Провайдер эмбеддингов через OpenAI-совместимый API
  * Работает с локальными и облачными моделями автоматически
+ * Поддерживает формат API: /v1/embeddings
  */
 export class CustomEmbeddingProvider implements EmbeddingProvider {
+    /**
+     * Получение эмбеддинга через OpenAI-совместимый API
+     * 
+     * @param text - Текст для векторизации
+     * @param config - Конфигурация LLM (должен содержать baseUrl/localUrl и embedderModel)
+     * @returns Векторное представление текста
+     */
     async getEmbedding(text: string, config: LLMConfig): Promise<number[]> {
-        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const defaultLocalApiUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
-        const baseUrl = config.baseUrl || config.localUrl || defaultLocalApiUrl;
-        const model = config.embedderModel || '';
+        if (!config.baseUrl && !config.localUrl) {
+            throw new ConfigError('baseUrl или localUrl должны быть указаны в настройках');
+        }
+        const baseUrl = config.baseUrl || config.localUrl!;
+        if (!config.embedderModel) {
+            throw new ConfigError('Модель эмбеддинга не указана в настройках');
+        }
+        const model = config.embedderModel;
         const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
         const timeout = ConfigValidator.validateTimeout(config.timeout);
         
@@ -126,8 +158,15 @@ export class CustomEmbeddingProvider implements EmbeddingProvider {
 
 /**
  * Фабрика провайдеров эмбеддингов
+ * Создает соответствующий провайдер на основе конфигурации
  */
 export class EmbeddingProviderFactory {
+    /**
+     * Создание провайдера эмбеддингов на основе конфигурации
+     * 
+     * @param config - Конфигурация LLM
+     * @returns Провайдер эмбеддингов
+     */
     static create(config: LLMConfig): EmbeddingProvider {
         // Ollama провайдер использует OllamaEmbeddingProvider
         if (config.provider === 'ollama') {

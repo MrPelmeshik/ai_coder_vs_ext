@@ -5,6 +5,7 @@ import { ApiErrorHandler } from '../utils/errorHandler';
 import { Logger } from '../utils/logger';
 import { ConfigValidator } from '../utils/validators';
 import { ConfigReader } from '../utils/configReader';
+import { ConfigError } from '../errors';
 import * as vscode from 'vscode';
 
 /**
@@ -18,10 +19,11 @@ export class OllamaProvider implements LLMProvider {
      * Генерация кода через Ollama API
      */
     async generate(prompt: string, config: LLMConfig): Promise<string> {
-        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
-        const localUrl = config.localUrl || defaultOllamaUrl;
-        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelOllama());
+        if (!config.localUrl) {
+            throw new ConfigError('localUrl не указан в настройках для провайдера ollama');
+        }
+        const localUrl = config.localUrl;
+        const model = ConfigValidator.validateModel(config.model);
         const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         // Формируем URL для Ollama API
@@ -81,10 +83,11 @@ export class OllamaProvider implements LLMProvider {
      * Потоковая генерация кода через Ollama API
      */
     async *stream(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const defaultOllamaUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
-        const localUrl = config.localUrl || defaultOllamaUrl;
-        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelOllama());
+        if (!config.localUrl) {
+            throw new ConfigError('localUrl не указан в настройках для провайдера ollama');
+        }
+        const localUrl = config.localUrl;
+        const model = ConfigValidator.validateModel(config.model);
         const timeout = ConfigValidator.validateTimeout(config.timeout);
 
         const url = `${localUrl}/api/generate`;

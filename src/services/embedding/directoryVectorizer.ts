@@ -50,6 +50,10 @@ export class DirectoryVectorizer {
         const needsOrigin = config.enableOrigin && !hasOrigin;
         const needsVsOrigin = config.enableVsOrigin && !hasVsOrigin;
         const needsVsSummarize = config.enableVsSummarize && !hasVsSummarize;
+        
+        Logger.info(`[DirectoryVectorizer] Директория ${dirPath}: enableOrigin=${config.enableOrigin}, hasOrigin=${hasOrigin}, needsOrigin=${needsOrigin}`);
+        Logger.info(`[DirectoryVectorizer] Директория ${dirPath}: enableVsOrigin=${config.enableVsOrigin}, hasVsOrigin=${hasVsOrigin}, needsVsOrigin=${needsVsOrigin}`);
+        Logger.info(`[DirectoryVectorizer] Директория ${dirPath}: enableVsSummarize=${config.enableVsSummarize}, hasVsSummarize=${hasVsSummarize}, needsVsSummarize=${needsVsSummarize}`);
 
         // Если все необходимые векторы уже созданы и не нужно удалять отключенные, пропускаем
         if (!needsOrigin && !needsVsOrigin && !needsVsSummarize) {
@@ -80,43 +84,66 @@ export class DirectoryVectorizer {
 
         try {
             let processedCount = 0;
+            let errorCount = 0;
 
             // Создаем запись для директории (origin)
             if (needsOrigin) {
-                await this._createOriginVector(dirPath, parentId);
-                processedCount++;
+                try {
+                    await this._createOriginVector(dirPath, parentId);
+                    processedCount++;
+                    Logger.info(`Создан origin вектор для директории ${dirPath}`);
+                } catch (error) {
+                    errorCount++;
+                    Logger.error(`Ошибка создания origin вектора для директории ${dirPath}`, error as Error);
+                }
             }
 
             // Создаем вектор vs_origin (сумма всех origin векторов вложений)
             if (needsVsOrigin) {
-                const created = await this._createVectorSum(
-                    dirPath,
-                    parentId,
-                    'vs_origin',
-                    'origin',
-                    'vs_origin'
-                );
-                if (created) {
-                    processedCount++;
+                try {
+                    const created = await this._createVectorSum(
+                        dirPath,
+                        parentId,
+                        'vs_origin',
+                        'origin',
+                        'vs_origin'
+                    );
+                    if (created) {
+                        processedCount++;
+                        Logger.info(`Создан vs_origin вектор для директории ${dirPath}`);
+                    } else {
+                        Logger.warn(`Не удалось создать vs_origin вектор для директории ${dirPath} - нет вложенных векторов`);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    Logger.error(`Ошибка создания vs_origin вектора для директории ${dirPath}`, error as Error);
                 }
             }
 
             // Создаем вектор vs_summarize (сумма всех summarize векторов вложений)
             if (needsVsSummarize) {
-                const created = await this._createVectorSum(
-                    dirPath,
-                    parentId,
-                    'vs_summarize',
-                    'summarize',
-                    'vs_summarize'
-                );
-                if (created) {
-                    processedCount++;
+                try {
+                    const created = await this._createVectorSum(
+                        dirPath,
+                        parentId,
+                        'vs_summarize',
+                        'summarize',
+                        'vs_summarize'
+                    );
+                    if (created) {
+                        processedCount++;
+                        Logger.info(`Создан vs_summarize вектор для директории ${dirPath}`);
+                    } else {
+                        Logger.warn(`Не удалось создать vs_summarize вектор для директории ${dirPath} - нет вложенных векторов`);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    Logger.error(`Ошибка создания vs_summarize вектора для директории ${dirPath}`, error as Error);
                 }
             }
             
             this.fileStatusService.clearProcessingStatus(dirUri);
-            return { processed: processedCount, errors: 0 };
+            return { processed: processedCount, errors: errorCount };
         } catch (error) {
             this.fileStatusService.clearProcessingStatus(dirUri);
             Logger.error(`Ошибка векторизации директории ${dirPath}`, error as Error);

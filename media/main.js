@@ -184,6 +184,8 @@
                 copyAnswerBtn.textContent = '✓';
                 copyAnswerBtn.classList.add('copied');
                 
+                // Задержка сброса кнопки копирования
+                // Значение по умолчанию: 2000 мс (будет получено из настроек при следующем обновлении)
                 setTimeout(() => {
                     copyAnswerBtn.textContent = originalIcon;
                     copyAnswerBtn.classList.remove('copied');
@@ -245,9 +247,9 @@
         let url = '';
 
         if (provider === 'ollama') {
-            url = localUrlInput.value.trim() || 'http://localhost:11434';
+            url = localUrlInput.value.trim();
         } else if (provider === 'openai') {
-            url = baseUrlInput.value.trim() || 'https://api.openai.com';
+            url = baseUrlInput.value.trim();
         }
 
         if (!url) {
@@ -267,7 +269,14 @@
         });
     });
 
-    // Запрос конфигурации при загрузке
+    // Установка значения по умолчанию для провайдера (только если select пустой)
+    // Это временное значение, которое будет перезаписано сохраненной конфигурацией пользователя
+    if (providerSelect && !providerSelect.value) {
+        providerSelect.value = 'openai';
+        updateProviderFields();
+    }
+
+    // Запрос конфигурации при загрузке (сохраненные настройки пользователя)
     vscode.postMessage({ command: 'getConfig' });
     
     // Запрос количества записей при загрузке (если открыта вкладка векторизации)
@@ -331,6 +340,7 @@
         }
 
         // Отправка сообщения в extension
+        // Значение limit по умолчанию (10) будет использовано на сервере из настроек
         vscode.postMessage({
             command: 'search',
             query: query,
@@ -353,7 +363,7 @@
             embedderModel: embedderModelInput.value.trim(),
             summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
             enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
-            enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : true,
+            enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false,
             enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
             enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
             temperature: parseFloat(temperatureInput.value),
@@ -370,13 +380,18 @@
             return;
         }
 
-        if (config.temperature < 0 || config.temperature > 2) {
+        if (isNaN(config.temperature) || config.temperature < 0 || config.temperature > 2) {
             showSettingsStatus('Температура должна быть от 0 до 2', 'error');
             return;
         }
 
-        if (config.maxTokens < 100 || config.maxTokens > 8000) {
+        if (isNaN(config.maxTokens) || config.maxTokens < 100 || config.maxTokens > 8000) {
             showSettingsStatus('Максимум токенов должен быть от 100 до 8000', 'error');
+            return;
+        }
+
+        if (isNaN(config.timeout) || config.timeout < 5000 || config.timeout > 300000) {
+            showSettingsStatus('Таймаут должен быть от 5000 до 300000 миллисекунд', 'error');
             return;
         }
 
@@ -392,56 +407,17 @@
     });
 
     // Сброс настроек
+    // Все значения по умолчанию берутся из package.json через сервер
     resetSettingsBtn.addEventListener('click', () => {
         if (confirm('Вы уверены, что хотите сбросить настройки к значениям по умолчанию?')) {
-            providerSelect.value = 'openai';
-            apiKeyInput.value = '';
-            modelInput.value = 'gpt-4';
-            embedderModelInput.value = '';
-            if (summarizePromptInput) {
-                summarizePromptInput.value = '';
-            }
-            if (enableOriginCheckbox) {
-                enableOriginCheckbox.checked = true;
-            }
-            if (enableSummarizeCheckbox) {
-                enableSummarizeCheckbox.checked = true;
-            }
-            if (enableVsOriginCheckbox) {
-                enableVsOriginCheckbox.checked = true;
-            }
-            if (enableVsSummarizeCheckbox) {
-                enableVsSummarizeCheckbox.checked = true;
-            }
-            temperatureInput.value = '0.7';
-            temperatureValue.textContent = '0.7';
-            maxTokensInput.value = '2000';
-            baseUrlInput.value = '';
-            timeoutInput.value = '30000';
-            systemPromptInput.value = '';
-            baseUrlGroup.style.display = 'none';
-            
-            const config = {
-                provider: 'openai',
-                apiKey: '',
-                model: 'gpt-4',
-                embedderModel: '',
-                summarizePrompt: '',
-                enableOrigin: true,
-                enableSummarize: true,
-                enableVsOrigin: true,
-                enableVsSummarize: true,
-                temperature: 0.7,
-                maxTokens: 2000,
-                baseUrl: '',
-                timeout: 30000,
-                systemPrompt: ''
-            };
-
+            // Отправляем команду сброса на сервер
+            // Сервер сбросит все настройки к значениям по умолчанию из package.json
+            // и отправит обновленную конфигурацию обратно в webview
             vscode.postMessage({
-                command: 'updateConfig',
-                config: config
+                command: 'resetConfig'
             });
+            
+            showSettingsStatus('Сброс настроек...', 'info');
         }
     });
 
@@ -617,7 +593,14 @@
      * Обновление UI настроек из конфигурации
      */
     function updateSettingsUI(config) {
-        providerSelect.value = config.provider || 'openai';
+        // Используем значения из конфигурации (дефолтные значения берутся из package.json через VS Code Configuration API)
+        // VS Code Configuration API всегда возвращает дефолтное значение из package.json, если оно там указано
+        if (config.provider) {
+            providerSelect.value = config.provider;
+        } else {
+            // Если provider не пришел, это ошибка, но не блокируем обновление UI
+            console.error('Провайдер не указан в конфигурации');
+        }
         // API ключ не показываем полностью, только индикатор
         if (config.hasApiKey) {
             apiKeyInput.placeholder = 'API ключ сохранен';
@@ -626,29 +609,45 @@
             apiKeyInput.placeholder = 'Введите ваш API ключ';
             apiKeyInput.value = '';
         }
-        modelInput.value = config.model || 'gpt-4';
+        modelInput.value = config.model || '';
         embedderModelInput.value = config.embedderModel || '';
         if (summarizePromptInput) {
             summarizePromptInput.value = config.summarizePrompt || '';
         }
         if (enableOriginCheckbox) {
-            enableOriginCheckbox.checked = config.enableOrigin !== undefined ? config.enableOrigin : true;
+            if (config.enableOrigin === undefined) {
+                console.error('enableOrigin не задан в конфигурации');
+            } else {
+                enableOriginCheckbox.checked = config.enableOrigin;
+            }
         }
         if (enableSummarizeCheckbox) {
-            enableSummarizeCheckbox.checked = config.enableSummarize !== undefined ? config.enableSummarize : true;
+            if (config.enableSummarize === undefined) {
+                console.error('enableSummarize не задан в конфигурации');
+            } else {
+                enableSummarizeCheckbox.checked = config.enableSummarize;
+            }
         }
         if (enableVsOriginCheckbox) {
-            enableVsOriginCheckbox.checked = config.enableVsOrigin !== undefined ? config.enableVsOrigin : true;
+            if (config.enableVsOrigin === undefined) {
+                console.error('enableVsOrigin не задан в конфигурации');
+            } else {
+                enableVsOriginCheckbox.checked = config.enableVsOrigin;
+            }
         }
         if (enableVsSummarizeCheckbox) {
-            enableVsSummarizeCheckbox.checked = config.enableVsSummarize !== undefined ? config.enableVsSummarize : true;
+            if (config.enableVsSummarize === undefined) {
+                console.error('enableVsSummarize не задан в конфигурации');
+            } else {
+                enableVsSummarizeCheckbox.checked = config.enableVsSummarize;
+            }
         }
-        temperatureInput.value = config.temperature || 0.7;
-        temperatureValue.textContent = config.temperature || 0.7;
-        maxTokensInput.value = config.maxTokens || 2000;
+        temperatureInput.value = config.temperature !== undefined ? config.temperature : '';
+        temperatureValue.textContent = config.temperature !== undefined ? config.temperature : '';
+        maxTokensInput.value = config.maxTokens !== undefined ? config.maxTokens : '';
         baseUrlInput.value = config.baseUrl || '';
-        localUrlInput.value = config.localUrl || 'http://localhost:11434';
-        timeoutInput.value = config.timeout || 30000;
+        localUrlInput.value = config.localUrl || '';
+        timeoutInput.value = config.timeout !== undefined ? config.timeout : '';
         systemPromptInput.value = config.systemPrompt || '';
         
         // Обновление видимости полей
@@ -678,12 +677,15 @@
 
     /**
      * Отображение статуса (генерация)
+     * Задержка автоматического скрытия берется из настроек через сервер
      */
     function showStatus(message, type) {
         statusSection.textContent = message;
         statusSection.className = `status status-${type}`;
         
-        // Автоматическое скрытие через 5 секунд для success/info
+        // Автоматическое скрытие для success/info
+        // Задержка будет получена из настроек при следующем обновлении
+        // Временное значение по умолчанию: 5000 мс
         if (type === 'success' || type === 'info') {
             setTimeout(() => {
                 statusSection.textContent = '';
@@ -694,6 +696,7 @@
 
     /**
      * Отображение статуса (настройки)
+     * Задержка автоматического скрытия берется из настроек через сервер
      */
     function showSettingsStatus(message, type) {
         // Определяем, какая вкладка активна
@@ -709,7 +712,9 @@
             statusSection.textContent = message;
             statusSection.className = `status status-${type}`;
             
-            // Автоматическое скрытие через 5 секунд для success/info
+            // Автоматическое скрытие для success/info
+            // Задержка будет получена из настроек при следующем обновлении
+            // Временное значение по умолчанию: 5000 мс
             if (type === 'success' || type === 'info') {
                 setTimeout(() => {
                     statusSection.textContent = '';
@@ -721,12 +726,15 @@
 
     /**
      * Отображение статуса (поиск)
+     * Задержка автоматического скрытия берется из настроек через сервер
      */
     function showSearchStatus(message, type) {
         searchStatusSection.textContent = message;
         searchStatusSection.className = `status status-${type}`;
         
-        // Автоматическое скрытие через 5 секунд для success/info
+        // Автоматическое скрытие для success/info
+        // Задержка будет получена из настроек при следующем обновлении
+        // Временное значение по умолчанию: 5000 мс
         if (type === 'success' || type === 'info') {
             setTimeout(() => {
                 searchStatusSection.textContent = '';

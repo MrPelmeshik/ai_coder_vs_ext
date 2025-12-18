@@ -3,6 +3,7 @@ import { OllamaProvider } from '../providers/ollamaProvider';
 import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
 
 import { STORAGE_KEYS, CONFIG_KEYS, API_TYPES } from '../constants';
+import { ConfigError } from '../errors';
 
 const API_KEY_SECRET_KEY = STORAGE_KEYS.API_KEY;
 
@@ -122,18 +123,53 @@ export class LLMService {
         // Загрузка API ключа из SecretStorage
         const apiKey = await this._getApiKey();
         
+        const provider = config.get<string>(CONFIG_KEYS.LLM.PROVIDER);
+        if (!provider) {
+            throw new ConfigError('Провайдер LLM не указан в настройках');
+        }
+        
+        const model = config.get<string>(CONFIG_KEYS.LLM.MODEL);
+        if (!model) {
+            throw new ConfigError('Модель LLM не указана в настройках');
+        }
+        
+        const temperature = config.get<number>(CONFIG_KEYS.LLM.TEMPERATURE);
+        if (temperature === undefined || temperature === null) {
+            throw new ConfigError('Температура не задана в настройках');
+        }
+        
+        const maxTokens = config.get<number>(CONFIG_KEYS.LLM.MAX_TOKENS);
+        if (maxTokens === undefined || maxTokens === null) {
+            throw new ConfigError('maxTokens не задан в настройках');
+        }
+        
+        const localUrl = config.get<string>(CONFIG_KEYS.LLM.LOCAL_URL);
+        if (!localUrl) {
+            throw new ConfigError('localUrl не указан в настройках');
+        }
+        
+        const timeout = config.get<number>(CONFIG_KEYS.LLM.TIMEOUT);
+        if (timeout === undefined || timeout === null) {
+            throw new ConfigError('timeout не задан в настройках');
+        }
+        
+        const apiType = config.get<string>(CONFIG_KEYS.LLM.API_TYPE);
+        if (!apiType) {
+            throw new ConfigError('apiType не указан в настройках');
+        }
+        
         return {
-            provider: config.get<string>(CONFIG_KEYS.LLM.PROVIDER)!,
+            provider,
             apiKey: apiKey || '',
-            model: config.get<string>(CONFIG_KEYS.LLM.MODEL)!,
-            embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL) || '',
-            temperature: config.get<number>(CONFIG_KEYS.LLM.TEMPERATURE)!,
-            maxTokens: config.get<number>(CONFIG_KEYS.LLM.MAX_TOKENS)!,
-            baseUrl: config.get<string>(CONFIG_KEYS.LLM.BASE_URL) || '',
-            systemPrompt: config.get<string>(CONFIG_KEYS.LLM.SYSTEM_PROMPT) || '',
-            localUrl: config.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!,
-            timeout: config.get<number>(CONFIG_KEYS.LLM.TIMEOUT)!,
-            apiType: config.get<string>(CONFIG_KEYS.LLM.API_TYPE)!
+            model,
+            embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL),
+            temperature,
+            maxTokens,
+            baseUrl: config.get<string>(CONFIG_KEYS.LLM.BASE_URL),
+            systemPrompt: config.get<string>(CONFIG_KEYS.LLM.SYSTEM_PROMPT),
+            localUrl,
+            timeout,
+            apiType
         };
     }
 
@@ -144,18 +180,53 @@ export class LLMService {
     private _loadConfigSync(): LLMConfig {
         const config = vscode.workspace.getConfiguration('aiCoder');
         
+        const provider = config.get<string>(CONFIG_KEYS.LLM.PROVIDER);
+        if (!provider) {
+            throw new ConfigError('Провайдер LLM не указан в настройках');
+        }
+        
+        const model = config.get<string>(CONFIG_KEYS.LLM.MODEL);
+        if (!model) {
+            throw new ConfigError('Модель LLM не указана в настройках');
+        }
+        
+        const temperature = config.get<number>(CONFIG_KEYS.LLM.TEMPERATURE);
+        if (temperature === undefined || temperature === null) {
+            throw new ConfigError('Температура не задана в настройках');
+        }
+        
+        const maxTokens = config.get<number>(CONFIG_KEYS.LLM.MAX_TOKENS);
+        if (maxTokens === undefined || maxTokens === null) {
+            throw new ConfigError('maxTokens не задан в настройках');
+        }
+        
+        const localUrl = config.get<string>(CONFIG_KEYS.LLM.LOCAL_URL);
+        if (!localUrl) {
+            throw new ConfigError('localUrl не указан в настройках');
+        }
+        
+        const timeout = config.get<number>(CONFIG_KEYS.LLM.TIMEOUT);
+        if (timeout === undefined || timeout === null) {
+            throw new ConfigError('timeout не задан в настройках');
+        }
+        
+        const apiType = config.get<string>(CONFIG_KEYS.LLM.API_TYPE);
+        if (!apiType) {
+            throw new ConfigError('apiType не указан в настройках');
+        }
+        
         return {
-            provider: config.get<string>(CONFIG_KEYS.LLM.PROVIDER)!,
+            provider,
             apiKey: '', // Будет загружен асинхронно
-            model: config.get<string>(CONFIG_KEYS.LLM.MODEL)!,
-            embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL) || '',
-            temperature: config.get<number>(CONFIG_KEYS.LLM.TEMPERATURE)!,
-            maxTokens: config.get<number>(CONFIG_KEYS.LLM.MAX_TOKENS)!,
-            baseUrl: config.get<string>(CONFIG_KEYS.LLM.BASE_URL) || '',
-            localUrl: config.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!,
-            timeout: config.get<number>(CONFIG_KEYS.LLM.TIMEOUT)!,
-            apiType: config.get<string>(CONFIG_KEYS.LLM.API_TYPE)!,
-            systemPrompt: config.get<string>(CONFIG_KEYS.LLM.SYSTEM_PROMPT) || ''
+            model,
+            embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL),
+            temperature,
+            maxTokens,
+            baseUrl: config.get<string>(CONFIG_KEYS.LLM.BASE_URL),
+            localUrl,
+            timeout,
+            apiType,
+            systemPrompt: config.get<string>(CONFIG_KEYS.LLM.SYSTEM_PROMPT)
         };
     }
 
@@ -211,8 +282,11 @@ export class LLMService {
      * В будущем будет заменена на реальный вызов LLM API
      */
     private async _mockGenerateCode(prompt: string): Promise<string> {
+        // Получаем задержку для mock генерации из настроек
+        const config = vscode.workspace.getConfiguration('aiCoder');
+        const mockDelay = config.get<number>('providers.mockDelay') ?? 1500;
         // Имитация задержки API
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, mockDelay));
 
         // Простая заглушка результата
         return `// Сгенерированный код на основе запроса: "${prompt}"
@@ -296,14 +370,20 @@ function generatedCode() {
         if (config.provider === 'ollama') {
             const provider = this._providers.get('ollama') as OllamaProvider;
             if (provider && typeof (provider as any).checkAvailability === 'function') {
-                const url = config.baseUrl || config.localUrl || 'http://localhost:11434';
+                if (!config.localUrl) {
+                    throw new ConfigError('localUrl не указан в настройках для провайдера ollama');
+                }
+                const url = config.baseUrl || config.localUrl;
                 return await (provider as any).checkAvailability(url);
             }
         } else if (config.provider === 'openai') {
             const provider = this._providers.get('openai') as OpenAiCompatibleProvider;
             if (provider && typeof (provider as any).checkAvailability === 'function') {
                 // Для OpenAI: если указан baseUrl/localUrl - проверяем его, иначе проверяем стандартный OpenAI API
-                const url = config.baseUrl || config.localUrl || 'https://api.openai.com';
+                if (!config.baseUrl && !config.localUrl) {
+                    throw new ConfigError('baseUrl или localUrl должны быть указаны в настройках для провайдера openai');
+                }
+                const url = config.baseUrl || config.localUrl!;
                 return await (provider as any).checkAvailability(url);
             }
         }
@@ -320,14 +400,20 @@ function generatedCode() {
         if (config.provider === 'ollama') {
             const provider = this._providers.get('ollama') as OllamaProvider;
             if (provider && typeof (provider as any).listModels === 'function') {
-                const url = config.baseUrl || config.localUrl || 'http://localhost:11434';
+                if (!config.localUrl) {
+                    throw new ConfigError('localUrl не указан в настройках для провайдера ollama');
+                }
+                const url = config.baseUrl || config.localUrl;
                 return await (provider as any).listModels(url);
             }
         } else if (config.provider === 'openai') {
             const provider = this._providers.get('openai') as OpenAiCompatibleProvider;
             if (provider && typeof (provider as any).listModels === 'function') {
                 // Для OpenAI: если указан baseUrl/localUrl - используем его, иначе стандартный OpenAI API
-                const url = config.baseUrl || config.localUrl || 'https://api.openai.com';
+                if (!config.baseUrl && !config.localUrl) {
+                    throw new ConfigError('baseUrl или localUrl должны быть указаны в настройках для провайдера openai');
+                }
+                const url = config.baseUrl || config.localUrl!;
                 return await (provider as any).listModels(url, config.apiKey);
             }
         }

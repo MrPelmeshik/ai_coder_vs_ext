@@ -38,6 +38,24 @@ export const CONFIG_KEYS = {
         ENABLE_VS_SUMMARIZE: 'vectorization.enableVsSummarize',
         MAX_TEXT_LENGTH: 'vectorization.maxTextLength',
         TRUNCATE_MESSAGE: 'vectorization.truncateMessage'
+    },
+    VALIDATION: {
+        TEMPERATURE_MIN: 'validation.temperatureMin',
+        TEMPERATURE_MAX: 'validation.temperatureMax',
+        MAX_TOKENS_MIN: 'validation.maxTokensMin',
+        MAX_TOKENS_MAX: 'validation.maxTokensMax',
+        TIMEOUT_MIN: 'validation.timeoutMin',
+        TIMEOUT_MAX: 'validation.timeoutMax'
+    },
+    UI: {
+        SEARCH_DEFAULT_LIMIT: 'ui.searchDefaultLimit',
+        STATUS_AUTO_HIDE_DELAY: 'ui.statusAutoHideDelay',
+        COPY_BUTTON_RESET_DELAY: 'ui.copyButtonResetDelay',
+        NONCE_LENGTH: 'ui.nonceLength'
+    },
+    PROVIDERS: {
+        OPENAI_API_URL: 'providers.openaiApiUrl',
+        MOCK_DELAY: 'providers.mockDelay'
     }
 } as const;
 

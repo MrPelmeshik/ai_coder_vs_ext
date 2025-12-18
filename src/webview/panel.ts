@@ -44,6 +44,9 @@ export class AICoderPanel {
                     case 'updateConfig':
                         this._handleUpdateConfig((message as UpdateConfigMessage).config);
                         return;
+                    case 'resetConfig':
+                        this._handleResetConfig();
+                        return;
                     case 'checkLocalServer':
                         const checkMsg = message as CheckLocalServerMessage;
                         this._handleCheckLocalServer(checkMsg.url, checkMsg.provider);
@@ -123,31 +126,55 @@ export class AICoderPanel {
      * Отправка конфигурации в webview
      */
     private async _sendConfigToWebview() {
-        const config = await this._llmService.getConfig();
-        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const summarizePrompt = vscodeConfig.get<string>('vectorization.summarizePrompt', '');
-        const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin', true);
-        const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize', true);
-        const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin', true);
-        const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize', true);
-        
-        // Не отправляем API ключ в webview по соображениям безопасности
-        const safeConfig = {
-            ...config,
-            apiKey: config.apiKey ? '***' : '',
-            hasApiKey: await this._llmService.hasApiKey(),
-            localUrl: config.localUrl || 'http://localhost:11434',
-            summarizePrompt: summarizePrompt,
-            enableOrigin: enableOrigin,
-            enableSummarize: enableSummarize,
-            enableVsOrigin: enableVsOrigin,
-            enableVsSummarize: enableVsSummarize
-        };
-        
-        this._panel.webview.postMessage({
-            command: 'config',
-            config: safeConfig
-        });
+        try {
+            const config = await this._llmService.getConfig();
+            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+            const summarizePrompt = vscodeConfig.get<string>('vectorization.summarizePrompt');
+            if (!summarizePrompt) {
+                throw new Error('vectorization.summarizePrompt не указан в настройках');
+            }
+            const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin');
+            if (enableOrigin === undefined) {
+                throw new Error('vectorization.enableOrigin не задан в настройках');
+            }
+            const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize');
+            if (enableSummarize === undefined) {
+                throw new Error('vectorization.enableSummarize не задан в настройках');
+            }
+            const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin');
+            if (enableVsOrigin === undefined) {
+                throw new Error('vectorization.enableVsOrigin не задан в настройках');
+            }
+            const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize');
+            if (enableVsSummarize === undefined) {
+                throw new Error('vectorization.enableVsSummarize не задан в настройках');
+            }
+            
+            // Не отправляем API ключ в webview по соображениям безопасности
+            const safeConfig = {
+                ...config,
+                apiKey: config.apiKey ? '***' : '',
+                hasApiKey: await this._llmService.hasApiKey(),
+                localUrl: config.localUrl,
+                summarizePrompt: summarizePrompt,
+                enableOrigin: enableOrigin,
+                enableSummarize: enableSummarize,
+                enableVsOrigin: enableVsOrigin,
+                enableVsSummarize: enableVsSummarize
+            };
+            
+            this._panel.webview.postMessage({
+                command: 'config',
+                config: safeConfig
+            });
+        } catch (error) {
+            // Если произошла ошибка (например, после сброса настроек), 
+            // VS Code Configuration API должен вернуть дефолтные значения из package.json
+            // Но на всякий случай логируем ошибку
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            vscode.window.showErrorMessage(`Ошибка загрузки конфигурации: ${errorMessage}`);
+            console.error('Ошибка в _sendConfigToWebview:', error);
+        }
     }
 
     /**
@@ -183,6 +210,47 @@ export class AICoderPanel {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             vscode.window.showErrorMessage(`Ошибка сохранения настроек: ${errorMessage}`);
+        }
+    }
+
+    /**
+     * Обработка сброса настроек к значениям по умолчанию
+     * Все значения берутся из package.json через VS Code Configuration API
+     */
+    private async _handleResetConfig() {
+        try {
+            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+            
+            // Сбрасываем все настройки LLM к значениям по умолчанию
+            // Используем undefined для удаления пользовательских значений,
+            // что вернет дефолтные значения из package.json
+            await vscodeConfig.update('llm.provider', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.model', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.embedderModel', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.temperature', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.maxTokens', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.baseUrl', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.apiType', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.localUrl', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.timeout', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('llm.systemPrompt', undefined, vscode.ConfigurationTarget.Global);
+            
+            // Сбрасываем настройки векторизации
+            await vscodeConfig.update('vectorization.summarizePrompt', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('vectorization.enableOrigin', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('vectorization.enableSummarize', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('vectorization.enableVsOrigin', undefined, vscode.ConfigurationTarget.Global);
+            await vscodeConfig.update('vectorization.enableVsSummarize', undefined, vscode.ConfigurationTarget.Global);
+            
+            // Очищаем API ключ из SecretStorage
+            await this._llmService.setApiKey('');
+            
+            // Отправляем обновленную конфигурацию в webview
+            await this._sendConfigToWebview();
+            vscode.window.showInformationMessage('Настройки сброшены к значениям по умолчанию');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            vscode.window.showErrorMessage(`Ошибка сброса настроек: ${errorMessage}`);
         }
     }
 
@@ -278,7 +346,12 @@ export class AICoderPanel {
     /**
      * Обработка команды поиска
      */
-    private async _handleSearch(query: string, limit: number = 10) {
+    private async _handleSearch(query: string, limit?: number) {
+        // Получаем значение по умолчанию из настроек
+        if (limit === undefined) {
+            const config = vscode.workspace.getConfiguration('aiCoder');
+            limit = config.get<number>('ui.searchDefaultLimit') ?? 10;
+        }
         if (!query || query.trim().length === 0) {
             vscode.window.showWarningMessage('Пожалуйста, введите запрос для поиска');
             return;
@@ -723,7 +796,7 @@ export class AICoderPanel {
                                 <div class="setting-group">
                                     <label for="provider-select">Провайдер:</label>
                                     <select id="provider-select" class="setting-input">
-                                        <option value="openai">OpenAI</option>
+                                        <option value="openai" selected>OpenAI</option>
                                         <option value="anthropic">Anthropic Claude</option>
                                         <option value="ollama">Ollama</option>
                                     </select>
@@ -959,11 +1032,14 @@ export class AICoderPanel {
 
 /**
  * Генерация nonce для безопасности
+ * Длина nonce берется из настроек
  */
 function getNonce() {
+    const config = vscode.workspace.getConfiguration('aiCoder');
+    const nonceLength = config.get<number>('ui.nonceLength') ?? 32;
     let text = '';
     const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
+    for (let i = 0; i < nonceLength; i++) {
         text += possible.charAt(Math.floor(Math.random() * possible.length));
     }
     return text;

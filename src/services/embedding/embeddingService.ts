@@ -10,7 +10,7 @@ import { FileVectorizer } from './fileVectorizer';
 import { DirectoryVectorizer } from './directoryVectorizer';
 import { ConfigValidator } from '../../utils/validators';
 import { Logger } from '../../utils/logger';
-import { VectorizationError } from '../../errors';
+import { VectorizationError, ConfigError } from '../../errors';
 
 /**
  * Сервис для работы с эмбеддингами файлов (координатор)
@@ -100,14 +100,36 @@ export class EmbeddingService {
 
             // Получаем настройки векторизации
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+            const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin');
+            if (enableOrigin === undefined) {
+                throw new ConfigError('vectorization.enableOrigin не задан в настройках');
+            }
+            const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize');
+            if (enableSummarize === undefined) {
+                throw new ConfigError('vectorization.enableSummarize не задан в настройках');
+            }
+            const enableVsOrigin = vscodeConfig.get<boolean>('vectorization.enableVsOrigin');
+            if (enableVsOrigin === undefined) {
+                throw new ConfigError('vectorization.enableVsOrigin не задан в настройках');
+            }
+            const enableVsSummarize = vscodeConfig.get<boolean>('vectorization.enableVsSummarize');
+            if (enableVsSummarize === undefined) {
+                throw new ConfigError('vectorization.enableVsSummarize не задан в настройках');
+            }
+            const summarizePrompt = vscodeConfig.get<string>('vectorization.summarizePrompt');
+            if (!summarizePrompt) {
+                throw new ConfigError('vectorization.summarizePrompt не указан в настройках');
+            }
             const vectorizationConfig = {
                 embedderModel: config.embedderModel!,
-                enableOrigin: vscodeConfig.get<boolean>('vectorization.enableOrigin', true),
-                enableSummarize: vscodeConfig.get<boolean>('vectorization.enableSummarize', true),
-                enableVsOrigin: vscodeConfig.get<boolean>('vectorization.enableVsOrigin', true),
-                enableVsSummarize: vscodeConfig.get<boolean>('vectorization.enableVsSummarize', true),
-                summarizePrompt: vscodeConfig.get<string>('vectorization.summarizePrompt', '')
+                enableOrigin,
+                enableSummarize,
+                enableVsOrigin,
+                enableVsSummarize,
+                summarizePrompt
             };
+            
+            Logger.info(`[EmbeddingService] Конфигурация векторизации: enableOrigin=${vectorizationConfig.enableOrigin}, enableSummarize=${vectorizationConfig.enableSummarize}, enableVsOrigin=${vectorizationConfig.enableVsOrigin}, enableVsSummarize=${vectorizationConfig.enableVsSummarize}`);
 
             // Собираем все элементы с их глубиной вложенности
             const itemsToProcess: Array<{
@@ -240,11 +262,23 @@ export class EmbeddingService {
         ConfigValidator.validateEmbeddingConfig(config);
         
         const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
+        const enableOrigin = vscodeConfig.get<boolean>('vectorization.enableOrigin');
+        if (enableOrigin === undefined) {
+            throw new ConfigError('vectorization.enableOrigin не задан в настройках');
+        }
+        const enableSummarize = vscodeConfig.get<boolean>('vectorization.enableSummarize');
+        if (enableSummarize === undefined) {
+            throw new ConfigError('vectorization.enableSummarize не задан в настройках');
+        }
+        const summarizePrompt = vscodeConfig.get<string>('vectorization.summarizePrompt');
+        if (!summarizePrompt) {
+            throw new ConfigError('vectorization.summarizePrompt не указан в настройках');
+        }
         const vectorizationConfig = {
             embedderModel: config.embedderModel!,
-            enableOrigin: vscodeConfig.get<boolean>('vectorization.enableOrigin', true),
-            enableSummarize: vscodeConfig.get<boolean>('vectorization.enableSummarize', true),
-            summarizePrompt: vscodeConfig.get<string>('vectorization.summarizePrompt', '')
+            enableOrigin,
+            enableSummarize,
+            summarizePrompt
         };
 
         // Удаляем старые записи из БД перед обработкой

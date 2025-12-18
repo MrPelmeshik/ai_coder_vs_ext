@@ -246,6 +246,66 @@
           "type": "string",
           "default": "\n\n[...текст обрезан для суммаризации...]",
           "description": "Сообщение, добавляемое при обрезке текста для суммаризации"
+        },
+        "aiCoder.validation.temperatureMin": {
+          "type": "number",
+          "default": 0,
+          "description": "Минимальное значение температуры для валидации"
+        },
+        "aiCoder.validation.temperatureMax": {
+          "type": "number",
+          "default": 2,
+          "description": "Максимальное значение температуры для валидации"
+        },
+        "aiCoder.validation.maxTokensMin": {
+          "type": "number",
+          "default": 100,
+          "description": "Минимальное значение maxTokens для валидации"
+        },
+        "aiCoder.validation.maxTokensMax": {
+          "type": "number",
+          "default": 8000,
+          "description": "Максимальное значение maxTokens для валидации"
+        },
+        "aiCoder.validation.timeoutMin": {
+          "type": "number",
+          "default": 5000,
+          "description": "Минимальное значение timeout для валидации (мс)"
+        },
+        "aiCoder.validation.timeoutMax": {
+          "type": "number",
+          "default": 300000,
+          "description": "Максимальное значение timeout для валидации (мс)"
+        },
+        "aiCoder.ui.searchDefaultLimit": {
+          "type": "number",
+          "default": 10,
+          "description": "Количество результатов поиска по умолчанию"
+        },
+        "aiCoder.ui.statusAutoHideDelay": {
+          "type": "number",
+          "default": 5000,
+          "description": "Задержка автоматического скрытия статусных сообщений (мс)"
+        },
+        "aiCoder.ui.copyButtonResetDelay": {
+          "type": "number",
+          "default": 2000,
+          "description": "Задержка сброса кнопки копирования (мс)"
+        },
+        "aiCoder.ui.nonceLength": {
+          "type": "number",
+          "default": 32,
+          "description": "Длина nonce для безопасности webview"
+        },
+        "aiCoder.providers.openaiApiUrl": {
+          "type": "string",
+          "default": "https://api.openai.com",
+          "description": "URL облачного OpenAI API"
+        },
+        "aiCoder.providers.mockDelay": {
+          "type": "number",
+          "default": 1500,
+          "description": "Задержка для mock генерации (мс)"
         }
       }
     }

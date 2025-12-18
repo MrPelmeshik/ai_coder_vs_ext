@@ -4,6 +4,7 @@
 export class ApiErrorHandler {
     /**
      * Обработка ошибок API запросов
+     * 
      * @param error - Ошибка для обработки
      * @param context - Контекст ошибки (название сервиса/API)
      * @param timeout - Таймаут запроса в миллисекундах

@@ -23,8 +23,14 @@ export class Logger {
     static initialize(context: vscode.ExtensionContext): void {
         this.outputChannel = vscode.window.createOutputChannel('AI Coder');
         const config = vscode.workspace.getConfiguration('aiCoder');
-        const levelName = config.get<string>('logLevel', 'INFO').toUpperCase();
-        this.logLevel = LogLevel[levelName as keyof typeof LogLevel] ?? LogLevel.INFO;
+        const levelName = config.get<string>('logLevel');
+        // Если logLevel не задан в настройках, используем INFO по умолчанию
+        // (это внутренняя настройка логирования, не критична для работы расширения)
+        if (levelName) {
+            this.logLevel = LogLevel[levelName.toUpperCase() as keyof typeof LogLevel] ?? LogLevel.INFO;
+        } else {
+            this.logLevel = LogLevel.INFO;
+        }
     }
 
     /**

@@ -5,7 +5,16 @@ import { ApiErrorHandler } from '../utils/errorHandler';
 import { Logger } from '../utils/logger';
 import { ConfigValidator } from '../utils/validators';
 import { ConfigReader } from '../utils/configReader';
+import { ConfigError } from '../errors';
 import * as vscode from 'vscode';
+
+/**
+ * Получение URL облачного OpenAI API из настроек
+ */
+function getOpenAiApiUrl(): string {
+    const config = vscode.workspace.getConfiguration('aiCoder');
+    return config.get<string>(CONFIG_KEYS.PROVIDERS.OPENAI_API_URL) ?? 'https://api.openai.com';
+}
 
 /**
  * Провайдер для работы с OpenAI-совместимыми API
@@ -23,22 +32,27 @@ export class OpenAiCompatibleProvider implements LLMProvider {
      * Автоматически определяет локальную или облачную модель на основе baseUrl и apiKey
      */
     async generate(prompt: string, config: LLMConfig): Promise<string> {
-        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const defaultLocalApiUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
-        
         // Определяем URL: если указан baseUrl/localUrl - используем его (локальная модель),
         // иначе если есть apiKey - используем стандартный OpenAI API (облачная модель),
-        // иначе используем дефолтный локальный URL
+        // иначе выбрасываем исключение
+        const openAiApiUrl = getOpenAiApiUrl();
         let baseUrl: string;
         if (config.baseUrl || config.localUrl) {
             baseUrl = config.baseUrl || config.localUrl!;
         } else if (config.apiKey && config.apiKey.trim() && config.apiKey !== ConfigReader.getApiKeyNotNeeded()) {
-            baseUrl = 'https://api.openai.com';
+            baseUrl = openAiApiUrl;
         } else {
-            baseUrl = defaultLocalApiUrl;
+            throw new ConfigError('baseUrl или localUrl должны быть указаны в настройках, либо должен быть указан apiKey для использования облачного API');
         }
         
-        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelLocalApi());
+        const model = ConfigValidator.validateModel(config.model);
+        // Для локального API apiKey может быть не нужен
+        // Для облачного API apiKey обязателен
+        if (baseUrl === openAiApiUrl) {
+            if (!config.apiKey || config.apiKey.trim().length === 0 || config.apiKey === ConfigReader.getApiKeyNotNeeded()) {
+                throw new ConfigError('apiKey не указан в настройках для облачного API');
+            }
+        }
         const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
         const timeout = ConfigValidator.validateTimeout(config.timeout);
 
@@ -120,22 +134,27 @@ export class OpenAiCompatibleProvider implements LLMProvider {
      * Автоматически определяет локальную или облачную модель на основе baseUrl и apiKey
      */
     async *stream(prompt: string, config: LLMConfig): AsyncIterable<string> {
-        const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const defaultLocalApiUrl = vscodeConfig.get<string>(CONFIG_KEYS.LLM.LOCAL_URL)!;
-        
         // Определяем URL: если указан baseUrl/localUrl - используем его (локальная модель),
         // иначе если есть apiKey - используем стандартный OpenAI API (облачная модель),
-        // иначе используем дефолтный локальный URL
+        // иначе выбрасываем исключение
+        const openAiApiUrl = getOpenAiApiUrl();
         let baseUrl: string;
         if (config.baseUrl || config.localUrl) {
             baseUrl = config.baseUrl || config.localUrl!;
         } else if (config.apiKey && config.apiKey.trim() && config.apiKey !== ConfigReader.getApiKeyNotNeeded()) {
-            baseUrl = 'https://api.openai.com';
+            baseUrl = openAiApiUrl;
         } else {
-            baseUrl = defaultLocalApiUrl;
+            throw new ConfigError('baseUrl или localUrl должны быть указаны в настройках, либо должен быть указан apiKey для использования облачного API');
         }
         
-        const model = ConfigValidator.validateModel(config.model, ConfigReader.getDefaultModelLocalApi());
+        const model = ConfigValidator.validateModel(config.model);
+        // Для локального API apiKey может быть не нужен
+        // Для облачного API apiKey обязателен
+        if (baseUrl === openAiApiUrl) {
+            if (!config.apiKey || config.apiKey.trim().length === 0 || config.apiKey === ConfigReader.getApiKeyNotNeeded()) {
+                throw new ConfigError('apiKey не указан в настройках для облачного API');
+            }
+        }
         const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
         const timeout = ConfigValidator.validateTimeout(config.timeout);
 
