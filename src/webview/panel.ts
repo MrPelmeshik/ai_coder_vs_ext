@@ -4,7 +4,7 @@ import { LLMService } from '../services/llmService';
 import { EmbeddingService } from '../services/embedding/embeddingService';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
-import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage, ShowNotificationMessage } from '../types/messages';
+import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage, ShowNotificationMessage, RequestCloseSettingsMessage } from '../types/messages';
 import { CONFIG_KEYS } from '../constants';
 import { Logger } from '../utils/logger';
 
@@ -87,6 +87,10 @@ export class AICoderPanel {
                         return;
                     case 'getStorageCount':
                         this._handleGetStorageCount();
+                        return;
+                    case 'requestCloseSettings':
+                        const closeMsg = message as RequestCloseSettingsMessage;
+                        this._handleRequestCloseSettings(closeMsg.hasChanges);
                         return;
                 }
             },
@@ -596,6 +600,44 @@ export class AICoderPanel {
     }
 
     /**
+     * Обработка запроса на закрытие настроек с проверкой изменений
+     */
+    private async _handleRequestCloseSettings(hasChanges: boolean) {
+        if (!hasChanges) {
+            // Нет изменений - просто закрываем
+            this._panel.webview.postMessage({
+                command: 'closeSettings'
+            });
+            return;
+        }
+
+        // Есть изменения - показываем диалог
+        const action = await vscode.window.showWarningMessage(
+            'У вас есть несохраненные изменения. Что вы хотите сделать?',
+            { modal: true },
+            'Выйти с сохранением',
+            'Выйти без сохранения'
+        );
+
+        if (action === 'Выйти с сохранением') {
+            // Сохраняем настройки и закрываем
+            this._panel.webview.postMessage({
+                command: 'saveAndCloseSettings'
+            });
+        } else if (action === 'Выйти без сохранения') {
+            // Отменяем изменения и закрываем
+            this._panel.webview.postMessage({
+                command: 'discardAndCloseSettings'
+            });
+        } else {
+            // Пользователь закрыл диалог (нажал Escape или кликнул вне диалога) - отменяем закрытие
+            this._panel.webview.postMessage({
+                command: 'cancelCloseSettings'
+            });
+        }
+    }
+
+    /**
      * Обработка команды генерации
      */
     private async _handleGenerate(text: string) {
@@ -873,7 +915,6 @@ export class AICoderPanel {
                             <div class="modal-header">
                                 <h2>Настройки</h2>
                                 <div class="modal-header-actions">
-                                    <button id="save-settings-btn" class="generate-button">Сохранить</button>
                                     <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
                                     <button id="close-settings-btn" class="modal-close-button" title="Закрыть">×</button>
                                 </div>

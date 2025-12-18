@@ -50,7 +50,6 @@
     const checkLocalBtn = document.getElementById('check-local-btn');
     const timeoutInput = document.getElementById('timeout-input');
     const systemPromptInput = document.getElementById('system-prompt-input');
-    const saveSettingsBtn = document.getElementById('save-settings-btn');
     const resetSettingsBtn = document.getElementById('reset-settings-btn');
     const clearStorageBtn = document.getElementById('clear-storage-btn');
     const refreshStorageCountBtn = document.getElementById('refresh-storage-count-btn');
@@ -261,10 +260,134 @@
     // Запрос конфигурации при загрузке (сохраненные настройки пользователя)
     vscode.postMessage({ command: 'getConfig' });
     
+    // Хранение исходных значений настроек для отслеживания изменений
+    let originalSettings = null;
+    
+    /**
+     * Сохранение текущих значений настроек как исходных
+     */
+    function saveOriginalSettings() {
+        // Для API ключа: если поле пустое, но placeholder указывает на сохраненный ключ,
+        // сохраняем специальное значение, чтобы не считать это изменением
+        let apiKeyValue = '';
+        if (apiKeyInput) {
+            const trimmed = apiKeyInput.value.trim();
+            if (trimmed) {
+                apiKeyValue = trimmed;
+            } else if (apiKeyInput.placeholder === 'API ключ сохранен') {
+                // API ключ сохранен, но не отображается - используем специальное значение
+                apiKeyValue = '__SAVED__';
+            }
+        }
+        
+        originalSettings = {
+            provider: providerSelect ? providerSelect.value : '',
+            apiKey: apiKeyValue,
+            model: modelInput ? modelInput.value.trim() : '',
+            embedderModel: embedderModelInput ? embedderModelInput.value.trim() : '',
+            summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
+            enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
+            enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false,
+            enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
+            enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
+            temperature: temperatureInput ? parseFloat(temperatureInput.value) : 0.7,
+            maxTokens: maxTokensInput ? parseInt(maxTokensInput.value) : 2000,
+            baseUrl: baseUrlInput ? baseUrlInput.value.trim() : '',
+            localUrl: localUrlInput ? localUrlInput.value.trim() : '',
+            timeout: timeoutInput ? parseInt(timeoutInput.value) : 30000,
+            systemPrompt: systemPromptInput ? systemPromptInput.value.trim() : '',
+            hasApiKey: apiKeyInput ? (apiKeyInput.placeholder === 'API ключ сохранен') : false
+        };
+    }
+    
+    /**
+     * Проверка наличия изменений в настройках
+     */
+    function hasSettingsChanges() {
+        if (!originalSettings) {
+            return false;
+        }
+        
+        // Для API ключа: если поле пустое, но placeholder указывает на сохраненный ключ,
+        // считаем, что ключ не изменился
+        let currentApiKey = '';
+        if (apiKeyInput) {
+            const trimmed = apiKeyInput.value.trim();
+            if (trimmed) {
+                currentApiKey = trimmed;
+            } else if (apiKeyInput.placeholder === 'API ключ сохранен') {
+                // API ключ сохранен, но не отображается
+                currentApiKey = '__SAVED__';
+            }
+        }
+        
+        const current = {
+            provider: providerSelect ? providerSelect.value : '',
+            apiKey: currentApiKey,
+            model: modelInput ? modelInput.value.trim() : '',
+            embedderModel: embedderModelInput ? embedderModelInput.value.trim() : '',
+            summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
+            enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
+            enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false,
+            enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
+            enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
+            temperature: temperatureInput ? parseFloat(temperatureInput.value) : 0.7,
+            maxTokens: maxTokensInput ? parseInt(maxTokensInput.value) : 2000,
+            baseUrl: baseUrlInput ? baseUrlInput.value.trim() : '',
+            localUrl: localUrlInput ? localUrlInput.value.trim() : '',
+            timeout: timeoutInput ? parseInt(timeoutInput.value) : 30000,
+            systemPrompt: systemPromptInput ? systemPromptInput.value.trim() : ''
+        };
+        
+        // Сравниваем все поля
+        return (
+            current.provider !== originalSettings.provider ||
+            current.apiKey !== originalSettings.apiKey ||
+            current.model !== originalSettings.model ||
+            current.embedderModel !== originalSettings.embedderModel ||
+            current.summarizePrompt !== originalSettings.summarizePrompt ||
+            current.enableOrigin !== originalSettings.enableOrigin ||
+            current.enableSummarize !== originalSettings.enableSummarize ||
+            current.enableVsOrigin !== originalSettings.enableVsOrigin ||
+            current.enableVsSummarize !== originalSettings.enableVsSummarize ||
+            Math.abs(current.temperature - originalSettings.temperature) > 0.001 ||
+            current.maxTokens !== originalSettings.maxTokens ||
+            current.baseUrl !== originalSettings.baseUrl ||
+            current.localUrl !== originalSettings.localUrl ||
+            current.timeout !== originalSettings.timeout ||
+            current.systemPrompt !== originalSettings.systemPrompt
+        );
+    }
+    
+    /**
+     * Функция закрытия настроек с проверкой изменений
+     */
+    function closeSettingsWithCheck() {
+        const hasChanges = hasSettingsChanges();
+        if (hasChanges) {
+            // Отправляем запрос на закрытие с информацией о наличии изменений
+            vscode.postMessage({
+                command: 'requestCloseSettings',
+                hasChanges: true
+            });
+        } else {
+            // Нет изменений - просто закрываем
+            if (settingsModal) {
+                settingsModal.style.display = 'none';
+                originalSettings = null;
+            }
+        }
+    }
+    
     // Управление модальным окном настроек
     if (settingsBtn && settingsModal) {
         settingsBtn.addEventListener('click', () => {
             settingsModal.style.display = 'flex';
+            // Сохраняем исходные значения при открытии
+            // Немного задерживаем, чтобы поля успели заполниться из конфигурации
+            setTimeout(() => {
+                saveOriginalSettings();
+            }, 100);
             // Всегда запрашиваем актуальную информацию о хранилище при открытии настроек
             requestStorageCount();
         });
@@ -272,7 +395,7 @@
     
     if (closeSettingsBtn && settingsModal) {
         closeSettingsBtn.addEventListener('click', () => {
-            settingsModal.style.display = 'none';
+            closeSettingsWithCheck();
         });
     }
     
@@ -280,14 +403,14 @@
     if (settingsModal) {
         settingsModal.addEventListener('click', (e) => {
             if (e.target === settingsModal) {
-                settingsModal.style.display = 'none';
+                closeSettingsWithCheck();
             }
         });
         
         // Закрытие модального окна при нажатии Escape
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && settingsModal.style.display === 'flex') {
-                settingsModal.style.display = 'none';
+                closeSettingsWithCheck();
             }
         });
     }
@@ -357,60 +480,6 @@
         searchResultSection.style.display = 'none';
         showSearchStatus('Поиск похожих файлов...', 'info');
     });
-
-    // Сохранение настроек
-    if (saveSettingsBtn) {
-        saveSettingsBtn.addEventListener('click', () => {
-            const config = {
-                provider: providerSelect.value,
-                apiKey: apiKeyInput.value.trim(),
-                model: modelInput.value.trim(),
-                embedderModel: embedderModelInput.value.trim(),
-                summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
-                enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
-                enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false,
-                enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
-                enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
-                temperature: parseFloat(temperatureInput.value),
-                maxTokens: parseInt(maxTokensInput.value),
-                baseUrl: baseUrlInput.value.trim(),
-                localUrl: localUrlInput.value.trim(),
-                timeout: parseInt(timeoutInput.value),
-                systemPrompt: systemPromptInput.value.trim()
-            };
-
-            // Валидация
-            if (!config.model) {
-                showSettingsStatus('Пожалуйста, укажите модель', 'error');
-                return;
-            }
-
-            if (isNaN(config.temperature) || config.temperature < 0 || config.temperature > 2) {
-                showSettingsStatus('Температура должна быть от 0 до 2', 'error');
-                return;
-            }
-
-            if (isNaN(config.maxTokens) || config.maxTokens < 100 || config.maxTokens > 8000) {
-                showSettingsStatus('Максимум токенов должен быть от 100 до 8000', 'error');
-                return;
-            }
-
-            if (isNaN(config.timeout) || config.timeout < 5000 || config.timeout > 300000) {
-                showSettingsStatus('Таймаут должен быть от 5000 до 300000 миллисекунд', 'error');
-                return;
-            }
-
-            // Отправка конфигурации
-            vscode.postMessage({
-                command: 'updateConfig',
-                config: config
-            });
-
-            saveSettingsBtn.disabled = true;
-            saveSettingsBtn.textContent = 'Сохранение...';
-            showSettingsStatus('Сохранение настроек...', 'info');
-        });
-    }
 
     // Сброс настроек
     // Все значения по умолчанию берутся из package.json через сервер
@@ -511,32 +580,38 @@
                 } catch (error) {
                     // Ошибка обновления UI настроек
                 }
-                // Восстанавливаем кнопки после получения конфигурации
-                // Это должно происходить всегда, даже если updateSettingsUI выбросила ошибку
-                if (saveSettingsBtn) {
-                    saveSettingsBtn.disabled = false;
-                    saveSettingsBtn.textContent = 'Сохранить настройки';
-                }
+                // Восстанавливаем кнопку сброса после получения конфигурации
                 if (resetSettingsBtn) {
                     resetSettingsBtn.disabled = false;
+                }
+                // Сохраняем исходные значения после загрузки конфигурации
+                // Если окно настроек открыто, обновляем исходные значения
+                if (settingsModal && settingsModal.style.display === 'flex') {
+                    setTimeout(() => {
+                        saveOriginalSettings();
+                    }, 100);
                 }
                 // Запрашиваем информацию о хранилище при загрузке конфигурации
                 // Это нужно, чтобы информация отображалась при открытии настроек
                 requestStorageCount();
                 break;
             case 'configUpdateError':
-                // Восстанавливаем кнопку сохранения при ошибке
-                if (saveSettingsBtn) {
-                    saveSettingsBtn.disabled = false;
-                    saveSettingsBtn.textContent = 'Сохранить настройки';
+                // Сбрасываем флаг закрытия при ошибке
+                if (window._closeSettingsAfterSave) {
+                    window._closeSettingsAfterSave = false;
                 }
                 showSettingsStatus(`Ошибка сохранения настроек: ${message.error}`, 'error');
                 break;
             case 'configUpdated':
-                // Восстанавливаем кнопку сохранения после успешного сохранения
-                if (saveSettingsBtn) {
-                    saveSettingsBtn.disabled = false;
-                    saveSettingsBtn.textContent = 'Сохранить настройки';
+                // Обновляем исходные значения после успешного сохранения
+                saveOriginalSettings();
+                // Если был запрос на закрытие после сохранения, закрываем окно
+                if (window._closeSettingsAfterSave) {
+                    window._closeSettingsAfterSave = false;
+                    if (settingsModal) {
+                        settingsModal.style.display = 'none';
+                        originalSettings = null;
+                    }
                 }
                 break;
             case 'resetConfigStarted':
@@ -554,6 +629,10 @@
                 if (resetSettingsBtn) {
                     resetSettingsBtn.disabled = false;
                 }
+                // Обновляем исходные значения после успешного сброса
+                setTimeout(() => {
+                    saveOriginalSettings();
+                }, 100);
                 break;
             case 'configResetError':
                 // Восстанавливаем кнопку сброса при ошибке
@@ -632,6 +711,114 @@
                     storageSize.textContent = 'Ошибка';
                     storageSize.title = message.error;
                 }
+                break;
+            case 'closeSettings':
+                // Просто закрываем окно настроек
+                if (settingsModal) {
+                    settingsModal.style.display = 'none';
+                    originalSettings = null;
+                }
+                break;
+            case 'saveAndCloseSettings':
+                // Сохраняем настройки и закрываем окно
+                // Собираем текущие значения и отправляем на сохранение
+                const configToSave = {
+                    provider: providerSelect.value,
+                    apiKey: apiKeyInput.value.trim(),
+                    model: modelInput.value.trim(),
+                    embedderModel: embedderModelInput.value.trim(),
+                    summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
+                    enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
+                    enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false,
+                    enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
+                    enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
+                    temperature: parseFloat(temperatureInput.value),
+                    maxTokens: parseInt(maxTokensInput.value),
+                    baseUrl: baseUrlInput.value.trim(),
+                    localUrl: localUrlInput.value.trim(),
+                    timeout: parseInt(timeoutInput.value),
+                    systemPrompt: systemPromptInput.value.trim()
+                };
+                
+                // Валидация
+                if (!configToSave.model) {
+                    showSettingsStatus('Пожалуйста, укажите модель', 'error');
+                    // Отменяем закрытие при ошибке валидации
+                    window._closeSettingsAfterSave = false;
+                    break;
+                }
+
+                if (isNaN(configToSave.temperature) || configToSave.temperature < 0 || configToSave.temperature > 2) {
+                    showSettingsStatus('Температура должна быть от 0 до 2', 'error');
+                    window._closeSettingsAfterSave = false;
+                    break;
+                }
+
+                if (isNaN(configToSave.maxTokens) || configToSave.maxTokens < 100 || configToSave.maxTokens > 8000) {
+                    showSettingsStatus('Максимум токенов должен быть от 100 до 8000', 'error');
+                    window._closeSettingsAfterSave = false;
+                    break;
+                }
+
+                if (isNaN(configToSave.timeout) || configToSave.timeout < 5000 || configToSave.timeout > 300000) {
+                    showSettingsStatus('Таймаут должен быть от 5000 до 300000 миллисекунд', 'error');
+                    window._closeSettingsAfterSave = false;
+                    break;
+                }
+                
+                // Отправляем на сохранение
+                vscode.postMessage({
+                    command: 'updateConfig',
+                    config: configToSave
+                });
+                
+                // Устанавливаем флаг, что нужно закрыть окно после сохранения
+                window._closeSettingsAfterSave = true;
+                showSettingsStatus('Сохранение настроек...', 'info');
+                break;
+            case 'discardAndCloseSettings':
+                // Отменяем изменения (восстанавливаем исходные значения) и закрываем
+                if (originalSettings) {
+                    // Восстанавливаем исходные значения
+                    if (providerSelect) providerSelect.value = originalSettings.provider;
+                    if (apiKeyInput) {
+                        // Если API ключ был сохранен, восстанавливаем placeholder
+                        if (originalSettings.apiKey === '__SAVED__' || originalSettings.hasApiKey) {
+                            apiKeyInput.placeholder = 'API ключ сохранен';
+                            apiKeyInput.value = '';
+                        } else {
+                            apiKeyInput.value = originalSettings.apiKey;
+                            apiKeyInput.placeholder = 'Введите ваш API ключ';
+                        }
+                    }
+                    if (modelInput) modelInput.value = originalSettings.model;
+                    if (embedderModelInput) embedderModelInput.value = originalSettings.embedderModel;
+                    if (summarizePromptInput) summarizePromptInput.value = originalSettings.summarizePrompt;
+                    if (enableOriginCheckbox) enableOriginCheckbox.checked = originalSettings.enableOrigin;
+                    if (enableSummarizeCheckbox) enableSummarizeCheckbox.checked = originalSettings.enableSummarize;
+                    if (enableVsOriginCheckbox) enableVsOriginCheckbox.checked = originalSettings.enableVsOrigin;
+                    if (enableVsSummarizeCheckbox) enableVsSummarizeCheckbox.checked = originalSettings.enableVsSummarize;
+                    if (temperatureInput) {
+                        temperatureInput.value = originalSettings.temperature;
+                        if (temperatureValue) temperatureValue.textContent = originalSettings.temperature;
+                    }
+                    if (maxTokensInput) maxTokensInput.value = originalSettings.maxTokens;
+                    if (baseUrlInput) baseUrlInput.value = originalSettings.baseUrl;
+                    if (localUrlInput) localUrlInput.value = originalSettings.localUrl;
+                    if (timeoutInput) timeoutInput.value = originalSettings.timeout;
+                    if (systemPromptInput) systemPromptInput.value = originalSettings.systemPrompt;
+                    
+                    // Обновляем видимость полей
+                    updateProviderFields();
+                }
+                // Закрываем окно
+                if (settingsModal) {
+                    settingsModal.style.display = 'none';
+                    originalSettings = null;
+                }
+                break;
+            case 'cancelCloseSettings':
+                // Пользователь отменил закрытие - ничего не делаем
                 break;
         }
 

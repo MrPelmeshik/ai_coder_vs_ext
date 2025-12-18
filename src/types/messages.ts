@@ -17,7 +17,8 @@ export type WebviewCommand =
     | 'clearStorage'
     | 'getStorageCount'
     | 'alert'
-    | 'showNotification';
+    | 'showNotification'
+    | 'requestCloseSettings';
 
 /**
  * Базовое сообщение Webview
@@ -121,6 +122,14 @@ export interface VectorizeAllMessage extends BaseWebviewMessage {
 }
 
 /**
+ * Сообщение запроса на закрытие настроек с проверкой изменений
+ */
+export interface RequestCloseSettingsMessage extends BaseWebviewMessage {
+    command: 'requestCloseSettings';
+    hasChanges: boolean;
+}
+
+/**
  * Объединенный тип всех сообщений Webview
  */
 export type WebviewMessage = 
@@ -135,5 +144,6 @@ export type WebviewMessage =
     | GetStorageCountMessage
     | ClearStorageMessage
     | VectorizeAllMessage
+    | RequestCloseSettingsMessage
     | BaseWebviewMessage;
 
