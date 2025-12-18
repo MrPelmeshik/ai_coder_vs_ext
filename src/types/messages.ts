@@ -16,7 +16,8 @@ export type WebviewCommand =
     | 'openFile'
     | 'clearStorage'
     | 'getStorageCount'
-    | 'alert';
+    | 'alert'
+    | 'showNotification';
 
 /**
  * Базовое сообщение Webview
@@ -90,6 +91,15 @@ export interface AlertMessage extends BaseWebviewMessage {
 }
 
 /**
+ * Сообщение показа уведомления
+ */
+export interface ShowNotificationMessage extends BaseWebviewMessage {
+    command: 'showNotification';
+    message: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+}
+
+/**
  * Сообщение получения количества записей
  */
 export interface GetStorageCountMessage extends BaseWebviewMessage {
@@ -121,6 +131,7 @@ export type WebviewMessage =
     | GetAllItemsMessage
     | OpenFileMessage
     | AlertMessage
+    | ShowNotificationMessage
     | GetStorageCountMessage
     | ClearStorageMessage
     | VectorizeAllMessage

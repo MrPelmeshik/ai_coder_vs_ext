@@ -37,22 +37,6 @@ h2 {
     letter-spacing: -0.2px;
 }
 
-/* Закрепление заголовков разделов внутри вкладки настроек (кроме первого) */
-#tab-settings > h2:not(:first-child) {
-    position: sticky;
-    top: 80px;
-    z-index: 98;
-    background-color: var(--vscode-editor-background);
-    padding-top: 8px;
-    padding-bottom: 8px;
-    margin-top: -8px;
-    margin-left: -12px;
-    margin-right: -12px;
-    padding-left: 12px;
-    padding-right: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    border-bottom: 1px solid var(--vscode-panel-border);
-}
 
 h3 {
     margin: 0;
@@ -514,11 +498,44 @@ h3 {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+.header-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+}
+
 .tabs {
     display: flex;
     gap: 8px;
-    margin-top: 10px;
     border-bottom: 1px solid var(--vscode-panel-border);
+    flex: 1;
+}
+
+.settings-button {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    height: 36px;
+    margin-left: 12px;
+}
+
+.settings-button:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+    transform: scale(1.05);
+}
+
+.settings-button:active {
+    transform: scale(0.95);
 }
 
 .tab-button {
@@ -931,5 +948,133 @@ h3 {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+/* Модальное окно настроек */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+}
+
+.modal-content {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-editor-background);
+    border-radius: 8px 8px 0 0;
+    gap: 12px;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+    flex: 1;
+}
+
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-header-actions .generate-button,
+.modal-header-actions .secondary-button {
+    margin: 0;
+    padding: 6px 16px;
+    font-size: 12px;
+}
+
+.modal-close-button {
+    background: transparent;
+    border: none;
+    color: var(--vscode-foreground);
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    margin-left: 4px;
+}
+
+.modal-close-button:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    color: var(--vscode-textLink-foreground);
+}
+
+.modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-body h2 {
+    position: sticky;
+    top: 0;
+    z-index: 98;
+    background-color: var(--vscode-editor-background);
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-top: -8px;
+    margin-left: -20px;
+    margin-right: -20px;
+    padding-left: 20px;
+    padding-right: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.modal-body h2:not(:first-child) {
+    margin-top: 24px;
+}
+
+.modal-body h2:first-child {
+    position: static;
+    box-shadow: none;
+    border-bottom: none;
+    margin-top: 0;
 }
 

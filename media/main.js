@@ -14,18 +14,19 @@
     const answerSection = document.getElementById('answer-section');
     const answerContent = document.getElementById('answer-content');
     const copyAnswerBtn = document.getElementById('copy-answer-btn');
-    const statusSection = document.getElementById('status-section');
 
     // Элементы DOM - поиск
     const searchQueryInput = document.getElementById('search-query-input');
     const searchBtn = document.getElementById('search-btn');
     const searchResultSection = document.getElementById('search-result-section');
     const searchResultsList = document.getElementById('search-results-list');
-    const searchStatusSection = document.getElementById('search-status-section');
 
     // Элементы DOM - настройки
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabContents = document.querySelectorAll('.tab-content');
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettingsBtn = document.getElementById('close-settings-btn');
     const providerSelect = document.getElementById('provider-select');
     const apiKeyInput = document.getElementById('api-key-input');
     const toggleApiKeyBtn = document.getElementById('toggle-api-key');
@@ -47,7 +48,6 @@
     const localUrlGroup = document.getElementById('local-url-group');
     const localCheckGroup = document.getElementById('local-check-group');
     const checkLocalBtn = document.getElementById('check-local-btn');
-    const localStatus = document.getElementById('local-status');
     const timeoutInput = document.getElementById('timeout-input');
     const systemPromptInput = document.getElementById('system-prompt-input');
     const saveSettingsBtn = document.getElementById('save-settings-btn');
@@ -56,8 +56,6 @@
     const refreshStorageCountBtn = document.getElementById('refresh-storage-count-btn');
     const storageCount = document.getElementById('storage-count');
     const storageSize = document.getElementById('storage-size');
-    const settingsStatusSection = document.getElementById('settings-status-section');
-    const vectorizationStatusSection = document.getElementById('vectorization-status-section');
 
     // Функция форматирования размера
     function formatBytes(bytes) {
@@ -92,11 +90,6 @@
             
             button.classList.add('active');
             document.getElementById(`tab-${targetTab}`).classList.add('active');
-            
-            // При открытии вкладки настроек запрашиваем количество записей
-            if (targetTab === 'settings') {
-                requestStorageCount();
-            }
             
             // При открытии вкладки поиска загружаем все записи
             if (targetTab === 'search') {
@@ -250,8 +243,6 @@
 
         checkLocalBtn.disabled = true;
         checkLocalBtn.textContent = 'Проверка...';
-        localStatus.textContent = '';
-        localStatus.className = 'local-status';
 
         vscode.postMessage({
             command: 'checkLocalServer',
@@ -270,10 +261,35 @@
     // Запрос конфигурации при загрузке (сохраненные настройки пользователя)
     vscode.postMessage({ command: 'getConfig' });
     
-    // Запрос количества записей при загрузке (если открыта вкладка настроек)
-    const settingsTab = document.getElementById('tab-settings');
-    if (settingsTab && settingsTab.classList.contains('active')) {
-        requestStorageCount();
+    // Управление модальным окном настроек
+    if (settingsBtn && settingsModal) {
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.style.display = 'flex';
+            // Всегда запрашиваем актуальную информацию о хранилище при открытии настроек
+            requestStorageCount();
+        });
+    }
+    
+    if (closeSettingsBtn && settingsModal) {
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+    }
+    
+    // Закрытие модального окна при клике на фон
+    if (settingsModal) {
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        });
+        
+        // Закрытие модального окна при нажатии Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && settingsModal.style.display === 'flex') {
+                settingsModal.style.display = 'none';
+            }
+        });
     }
 
     // Обработчик нажатия кнопки генерации
@@ -504,6 +520,9 @@
                 if (resetSettingsBtn) {
                     resetSettingsBtn.disabled = false;
                 }
+                // Запрашиваем информацию о хранилище при загрузке конфигурации
+                // Это нужно, чтобы информация отображалась при открытии настроек
+                requestStorageCount();
                 break;
             case 'configUpdateError':
                 // Восстанавливаем кнопку сохранения при ошибке
@@ -547,12 +566,8 @@
                 checkLocalBtn.disabled = false;
                 checkLocalBtn.textContent = 'Проверить подключение';
                 if (message.available) {
-                    localStatus.textContent = '✓ Сервер доступен';
-                    localStatus.className = 'local-status local-status-success';
                     showSettingsStatus('Локальный сервер доступен', 'success');
                 } else {
-                    localStatus.textContent = '✗ Сервер недоступен';
-                    localStatus.className = 'local-status local-status-error';
                     showSettingsStatus('Не удалось подключиться к серверу', 'error');
                 }
                 break;
@@ -686,10 +701,6 @@
         updateProviderFields();
         
         showSettingsStatus('Настройки загружены', 'success');
-        setTimeout(() => {
-            settingsStatusSection.textContent = '';
-            settingsStatusSection.className = 'status';
-        }, 2000);
     }
 
     /**
@@ -712,61 +723,36 @@
      * Задержка автоматического скрытия берется из настроек через сервер
      */
     function showStatus(message, type) {
-        statusSection.textContent = message;
-        statusSection.className = `status status-${type}`;
-        
-        // Автоматическое скрытие для success/info
-        // Задержка будет получена из настроек при следующем обновлении
-        // Временное значение по умолчанию: 5000 мс
-        if (type === 'success' || type === 'info') {
-            setTimeout(() => {
-                statusSection.textContent = '';
-                statusSection.className = 'status';
-            }, 5000);
-        }
+        // Отправляем уведомление в VS Code
+        vscode.postMessage({
+            command: 'showNotification',
+            message: message,
+            type: type
+        });
     }
 
     /**
      * Отображение статуса (настройки)
-     * Задержка автоматического скрытия берется из настроек через сервер
      */
     function showSettingsStatus(message, type) {
-        // Показываем статус в секции настроек
-        const statusSection = settingsStatusSection;
-        
-        if (statusSection) {
-            statusSection.textContent = message;
-            statusSection.className = `status status-${type}`;
-            
-            // Автоматическое скрытие для success/info
-            // Задержка будет получена из настроек при следующем обновлении
-            // Временное значение по умолчанию: 5000 мс
-            if (type === 'success' || type === 'info') {
-                setTimeout(() => {
-                    statusSection.textContent = '';
-                    statusSection.className = 'status';
-                }, 5000);
-            }
-        }
+        // Отправляем уведомление в VS Code
+        vscode.postMessage({
+            command: 'showNotification',
+            message: message,
+            type: type
+        });
     }
 
     /**
      * Отображение статуса (поиск)
-     * Задержка автоматического скрытия берется из настроек через сервер
      */
     function showSearchStatus(message, type) {
-        searchStatusSection.textContent = message;
-        searchStatusSection.className = `status status-${type}`;
-        
-        // Автоматическое скрытие для success/info
-        // Задержка будет получена из настроек при следующем обновлении
-        // Временное значение по умолчанию: 5000 мс
-        if (type === 'success' || type === 'info') {
-            setTimeout(() => {
-                searchStatusSection.textContent = '';
-                searchStatusSection.className = 'status';
-            }, 5000);
-        }
+        // Отправляем уведомление в VS Code
+        vscode.postMessage({
+            command: 'showNotification',
+            message: message,
+            type: type
+        });
     }
 
     /**
