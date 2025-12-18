@@ -65,7 +65,8 @@ export class AICoderPanel {
             (message: WebviewMessage) => {
                 switch (message.command) {
                     case 'generate':
-                        this._handleGenerate((message as GenerateMessage).text);
+                        const generateMsg = message as any;
+                        this._handleGenerate(generateMsg.text, generateMsg.model);
                         return;
                     case 'getConfig':
                         this._sendConfigToWebview();
@@ -122,9 +123,15 @@ export class AICoderPanel {
                     case 'getServers':
                         this._handleGetServers();
                         return;
+                    case 'getActiveModels':
+                        this._handleGetActiveModels();
+                        return;
                     case 'addServer':
                         const addServerMsg = message as any;
-                        this._handleAddServer(addServerMsg.server);
+                        Logger.info('Получена команда addServer', { server: addServerMsg.server });
+                        this._handleAddServer(addServerMsg.server).catch(error => {
+                            Logger.error('Ошибка в _handleAddServer', error as Error);
+                        });
                         return;
                     case 'deleteServer':
                         const deleteServerMsg = message as any;
@@ -682,20 +689,65 @@ export class AICoderPanel {
     }
 
     /**
+     * Получение списка активных моделей
+     */
+    private async _handleGetActiveModels() {
+        try {
+            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            const activeModels: Array<{ serverId: string; serverName: string; modelId: string; modelName: string; url: string; apiKey?: string; temperature?: number; maxTokens?: number; systemPrompt?: string }> = [];
+            
+            servers.forEach(server => {
+                if (server.active !== false && server.models) {
+                    server.models.forEach(model => {
+                        if (model.active !== false) {
+                            activeModels.push({
+                                serverId: server.id,
+                                serverName: server.name,
+                                modelId: model.id || model.name,
+                                modelName: model.name,
+                                url: server.url,
+                                apiKey: server.apiKey,
+                                temperature: model.temperature,
+                                maxTokens: model.maxTokens,
+                                systemPrompt: model.systemPrompt
+                            });
+                        }
+                    });
+                }
+            });
+            
+            this._panel.webview.postMessage({
+                command: 'activeModelsList',
+                models: activeModels
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            this._panel.webview.postMessage({
+                command: 'activeModelsList',
+                models: []
+            });
+        }
+    }
+
+    /**
      * Добавление нового сервера
      */
     private async _handleAddServer(serverData: { name: string; url: string; apiKey?: string }) {
         try {
+            Logger.info(`Добавление сервера: ${serverData.name}, URL: ${serverData.url}`);
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const newServer: LLMServer = {
                 id: `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 name: serverData.name,
                 url: serverData.url,
                 apiKey: serverData.apiKey,
+                active: true, // По умолчанию сервер активен
                 status: 'unavailable'
             };
             servers.push(newServer);
             await this._context.workspaceState.update('llmServers', servers);
+            
+            Logger.info(`Сервер успешно добавлен, ID: ${newServer.id}`);
             
             this._panel.webview.postMessage({
                 command: 'serverAdded',
@@ -703,6 +755,7 @@ export class AICoderPanel {
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            Logger.error('Ошибка добавления сервера', error as Error);
             this._panel.webview.postMessage({
                 command: 'serverAddError',
                 error: errorMessage
@@ -998,7 +1051,7 @@ export class AICoderPanel {
     /**
      * Обработка команды генерации
      */
-    private async _handleGenerate(text: string) {
+    private async _handleGenerate(text: string, model?: any) {
         if (!text || text.trim().length === 0) {
             vscode.window.showWarningMessage('Пожалуйста, введите текст для генерации');
             return;
@@ -1032,9 +1085,31 @@ export class AICoderPanel {
                 let thinkingStartMarker = '';
                 let thinkingEndMarker = '';
 
-                // Используем streaming генерацию
-                for await (const chunk of this._llmService.streamGenerateCode(text)) {
-                    fullResponse += chunk;
+                // Создаем конфигурацию из выбранной модели или используем дефолтную
+                let config: any;
+                if (model) {
+                    const defaultConfig = await this._llmService.getConfig();
+                    config = {
+                        provider: 'openai', // Всегда используем openai-совместимый провайдер для подключений
+                        apiKey: model.apiKey || '',
+                        model: model.modelName,
+                        baseUrl: model.url,
+                        temperature: model.temperature !== undefined ? model.temperature : defaultConfig.temperature,
+                        maxTokens: model.maxTokens !== undefined ? model.maxTokens : defaultConfig.maxTokens,
+                        systemPrompt: model.systemPrompt || defaultConfig.systemPrompt,
+                        timeout: defaultConfig.timeout
+                    };
+                } else {
+                    config = await this._llmService.getConfig();
+                }
+
+                // Используем streaming генерацию с кастомной конфигурацией
+                const provider = new OpenAiCompatibleProvider();
+                
+                // Используем streaming если доступен, иначе обычную генерацию
+                if (provider.stream) {
+                    for await (const chunk of provider.stream(text, config)) {
+                        fullResponse += chunk;
                     
                     // Проверяем начало блока размышлений
                     if (!inThinkingBlock) {
@@ -1123,6 +1198,11 @@ export class AICoderPanel {
                             isThinking: true
                         });
                     }
+                    }
+                } else {
+                    // Если streaming не поддерживается, используем обычную генерацию
+                    const result = await provider.generate(text, config);
+                    fullResponse = result;
                 }
 
                 // Финальная обработка
@@ -1218,6 +1298,10 @@ export class AICoderPanel {
                     <!-- Вкладка генерации -->
                     <div class="tab-content active" id="tab-generate">
                         <div class="input-section">
+                            <label for="generation-model-select-main">Модель для генерации:</label>
+                            <select id="generation-model-select-main" class="setting-input" style="margin-bottom: 12px;">
+                                <option value="">Выберите модель...</option>
+                            </select>
                             <label for="prompt-input">Введите запрос для генерации кода:</label>
                             <textarea 
                                 id="prompt-input" 
@@ -1279,145 +1363,38 @@ export class AICoderPanel {
                             </div>
                             <div class="modal-tabs">
                                 <button class="modal-tab-button active" data-settings-tab="general">Общие</button>
-                                <button class="modal-tab-button" data-settings-tab="models">Модели</button>
+                                <button class="modal-tab-button" data-settings-tab="models">Подключения</button>
                             </div>
                             <div class="modal-body">
                                 <!-- Вкладка "Общие" -->
                                 <div class="settings-tab-content active" id="settings-tab-general">
-                                    <h2>Настройки LLM</h2>
+                                    <h2>Выбор моделей</h2>
                                     
-                                    <div class="settings-grid">
-                                        <div class="setting-group">
-                                            <label for="provider-select">Провайдер:</label>
-                                            <select id="provider-select" class="setting-input">
-                                                <option value="openai" selected>OpenAI</option>
-                                                <option value="anthropic">Anthropic Claude</option>
-                                                <option value="ollama">Ollama</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="setting-group">
-                                            <label for="model-input">Модель LLM:</label>
-                                            <input 
-                                                type="text" 
-                                                id="model-input" 
-                                                class="setting-input"
-                                                placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
-                                            />
-                                            <small class="setting-hint">Название модели вашего провайдера</small>
-                                        </div>
-                                    </div>
-
-                                <div class="setting-group">
-                                    <label for="api-key-input">API Ключ:</label>
-                                    <div class="api-key-wrapper">
-                                        <input 
-                                            type="password" 
-                                            id="api-key-input" 
-                                            class="setting-input"
-                                            placeholder="Введите ваш API ключ"
-                                        />
-                                        <button id="toggle-api-key" class="toggle-button" title="Показать/скрыть">👁</button>
-                                    </div>
-                                    <small class="setting-hint">API ключ хранится в безопасном хранилище VS Code</small>
-                                </div>
-
-                                <div class="settings-grid">
                                     <div class="setting-group">
-                                        <label for="temperature-input">Температура: <span id="temperature-value">0.7</span></label>
-                                        <input 
-                                            type="range" 
-                                            id="temperature-input" 
-                                            class="setting-slider"
-                                            min="0" 
-                                            max="2" 
-                                            step="0.1" 
-                                            value="0.7"
-                                        />
-                                        <small class="setting-hint">Контролирует креативность ответов (0 = детерминированный, 2 = очень креативный)</small>
+                                        <label for="generation-model-select">Модель для генерации текста:</label>
+                                        <select id="generation-model-select" class="setting-input">
+                                            <option value="">Выберите модель...</option>
+                                        </select>
+                                        <small class="setting-hint">Модель из активных подключений для генерации кода</small>
                                     </div>
-
-                                    <div class="setting-group">
-                                        <label for="max-tokens-input">Максимум токенов:</label>
-                                        <input 
-                                            type="number" 
-                                            id="max-tokens-input" 
-                                            class="setting-input"
-                                            min="100" 
-                                            max="8000" 
-                                            value="2000"
-                                        />
-                                        <small class="setting-hint">Максимальная длина ответа в токенах</small>
-                                    </div>
-                                </div>
-
-                                <div class="settings-grid">
-                                    <div class="setting-group" id="local-url-group" style="display: none;">
-                                        <label for="local-url-input">URL локального сервера:</label>
-                                        <input 
-                                            type="text" 
-                                            id="local-url-input" 
-                                            class="setting-input"
-                                            placeholder="http://localhost:11434"
-                                        />
-                                        <small class="setting-hint">URL для Ollama (по умолчанию: http://localhost:11434)</small>
-                                    </div>
-
-                                    <div class="setting-group" id="base-url-group" style="display: none;">
-                                        <label for="base-url-input">URL сервера (опционально):</label>
-                                        <input 
-                                            type="text" 
-                                            id="base-url-input" 
-                                            class="setting-input"
-                                            placeholder="http://localhost:1234/v1"
-                                        />
-                                        <small class="setting-hint">Для локальных моделей (LM Studio, LocalAI и т.д.). Если не указан, используется облачный OpenAI API</small>
-                                    </div>
-
-                                    <div class="setting-group">
-                                        <label for="timeout-input">Таймаут (мс):</label>
-                                        <input 
-                                            type="number" 
-                                            id="timeout-input" 
-                                            class="setting-input"
-                                            min="5000" 
-                                            max="300000" 
-                                            value="30000"
-                                        />
-                                        <small class="setting-hint">Максимальное время ожидания ответа</small>
-                                    </div>
-                                </div>
-
-                                <div class="setting-group" id="local-check-group" style="display: none;">
-                                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                        <button id="check-local-btn" class="secondary-button" style="margin-left: 0;">Проверить подключение</button>
-                                    </div>
-                                </div>
-
-                                <div class="setting-group">
-                                    <label for="system-prompt-input">Системный промпт:</label>
-                                    <textarea 
-                                        id="system-prompt-input" 
-                                        class="setting-input"
-                                        rows="4"
-                                        placeholder="Оставьте пустым для использования значения по умолчанию из настроек VS Code"
-                                    ></textarea>
-                                    <small class="setting-hint">Системный промпт определяет роль и поведение модели. Если не указан, используется значение по умолчанию из настроек.</small>
-                                </div>
-
 
                                 <div style="margin-top: 24px; padding-top: 16px; border-top: 2px solid var(--vscode-panel-border);">
                                     <h2>Настройки векторизации</h2>
                                     
                                     <div class="setting-group">
-                                        <label for="embedder-model-input">Модель эмбеддинга:</label>
-                                        <input 
-                                            type="text" 
-                                            id="embedder-model-input" 
-                                            class="setting-input"
-                                            placeholder="text-embedding-ada-002, nomic-embed-text, all-minilm..."
-                                        />
-                                        <small class="setting-hint">Модель для создания векторных представлений текста</small>
+                                        <label for="embedder-model-select">Модель эмбеддинга:</label>
+                                        <select id="embedder-model-select" class="setting-input">
+                                            <option value="">Выберите модель...</option>
+                                        </select>
+                                        <small class="setting-hint">Модель из активных подключений для создания векторных представлений текста</small>
+                                    </div>
+                                    
+                                    <div class="setting-group" id="summarize-model-group" style="display: none;">
+                                        <label for="summarize-model-select">Модель для суммаризации:</label>
+                                        <select id="summarize-model-select" class="setting-input">
+                                            <option value="">Выберите модель...</option>
+                                        </select>
+                                        <small class="setting-hint">Модель из активных подключений для суммаризации файлов при векторизации</small>
                                     </div>
 
                                     <div class="setting-group">
@@ -1493,7 +1470,7 @@ export class AICoderPanel {
                                 </div>
                                 </div>
 
-                                <!-- Вкладка "Модели" -->
+                                <!-- Вкладка "Подключения" -->
                                 <div class="settings-tab-content" id="settings-tab-models">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                                         <h2 style="margin: 0;">Управление серверами LLM</h2>
@@ -1532,8 +1509,8 @@ export class AICoderPanel {
                                             </div>
                                         </div>
                                         <div class="server-actions">
-                                            <button id="save-server-btn" class="server-action-btn">Сохранить</button>
-                                            <button id="cancel-server-btn" class="server-action-btn">Отмена</button>
+                                            <button id="save-server-btn" type="button" class="server-action-btn">Сохранить</button>
+                                            <button id="cancel-server-btn" type="button" class="server-action-btn">Отмена</button>
                                         </div>
                                     </div>
                                     

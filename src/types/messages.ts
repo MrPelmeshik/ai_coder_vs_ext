@@ -27,7 +27,8 @@ export type WebviewCommand =
     | 'getServerModels'
     | 'updateServerModel'
     | 'toggleServerActive'
-    | 'toggleModelActive';
+    | 'toggleModelActive'
+    | 'getActiveModels';
 
 /**
  * Базовое сообщение Webview

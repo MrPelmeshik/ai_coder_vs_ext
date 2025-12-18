@@ -27,34 +27,22 @@
     const settingsBtn = document.getElementById('settings-btn');
     const settingsModal = document.getElementById('settings-modal');
     const closeSettingsBtn = document.getElementById('close-settings-btn');
-    const providerSelect = document.getElementById('provider-select');
-    const apiKeyInput = document.getElementById('api-key-input');
-    const toggleApiKeyBtn = document.getElementById('toggle-api-key');
-    const modelInput = document.getElementById('model-input');
-    const embedderModelInput = document.getElementById('embedder-model-input');
+    const generationModelSelect = document.getElementById('generation-model-select');
+    const generationModelSelectMain = document.getElementById('generation-model-select-main');
+    const embedderModelSelect = document.getElementById('embedder-model-select');
+    const summarizeModelSelect = document.getElementById('summarize-model-select');
+    const summarizeModelGroup = document.getElementById('summarize-model-group');
     const summarizePromptInput = document.getElementById('summarize-prompt-input');
     const enableOriginCheckbox = document.getElementById('enable-origin-checkbox');
     const enableSummarizeCheckbox = document.getElementById('enable-summarize-checkbox');
     const enableVsOriginCheckbox = document.getElementById('enable-vs-origin-checkbox');
     const enableVsSummarizeCheckbox = document.getElementById('enable-vs-summarize-checkbox');
-    const temperatureInput = document.getElementById('temperature-input');
-    const temperatureValue = document.getElementById('temperature-value');
-    const maxTokensInput = document.getElementById('max-tokens-input');
-    const baseUrlInput = document.getElementById('base-url-input');
-    const baseUrlGroup = document.getElementById('base-url-group');
-    const apiTypeSelect = document.getElementById('api-type-select');
-    const apiTypeGroup = document.getElementById('api-type-group');
-    const localUrlInput = document.getElementById('local-url-input');
-    const localUrlGroup = document.getElementById('local-url-group');
-    const localCheckGroup = document.getElementById('local-check-group');
-    const checkLocalBtn = document.getElementById('check-local-btn');
-    const timeoutInput = document.getElementById('timeout-input');
-    const systemPromptInput = document.getElementById('system-prompt-input');
-    const resetSettingsBtn = document.getElementById('reset-settings-btn');
     const clearStorageBtn = document.getElementById('clear-storage-btn');
     const refreshStorageCountBtn = document.getElementById('refresh-storage-count-btn');
     const storageCount = document.getElementById('storage-count');
     const storageSize = document.getElementById('storage-size');
+    
+    let activeModels = []; // Список активных моделей
 
     // Элементы DOM - управление серверами
     const serverNameInput = document.getElementById('server-name-input');
@@ -425,10 +413,53 @@
             }, 100);
             // Всегда запрашиваем актуальную информацию о хранилище при открытии настроек
             requestStorageCount();
-            // Загружаем серверы при открытии настроек
+            // Загружаем серверы и активные модели при открытии настроек
             setTimeout(() => {
                 loadServers();
+                loadActiveModels();
             }, 150);
+        });
+    }
+    
+    // Загрузка активных моделей
+    function loadActiveModels() {
+        vscode.postMessage({
+            command: 'getActiveModels'
+        });
+    }
+    
+    // Обновление селектов моделей
+    function updateModelSelects() {
+        const selects = [generationModelSelect, generationModelSelectMain, embedderModelSelect, summarizeModelSelect].filter(Boolean);
+        
+        selects.forEach(select => {
+            if (!select) return;
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">Выберите модель...</option>';
+            
+            activeModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = `${model.serverId}:${model.modelId}`;
+                option.textContent = `${model.serverName} - ${model.modelName}`;
+                select.appendChild(option);
+            });
+            
+            // Восстанавливаем выбранное значение, если оно все еще существует
+            if (currentValue) {
+                select.value = currentValue;
+            }
+        });
+        
+        // Показываем/скрываем группу выбора модели для суммаризации
+        if (summarizeModelGroup && enableSummarizeCheckbox) {
+            summarizeModelGroup.style.display = enableSummarizeCheckbox.checked ? 'block' : 'none';
+        }
+    }
+    
+    // Обработчик изменения чекбокса суммаризации
+    if (enableSummarizeCheckbox && summarizeModelGroup) {
+        enableSummarizeCheckbox.addEventListener('change', () => {
+            summarizeModelGroup.style.display = enableSummarizeCheckbox.checked ? 'block' : 'none';
         });
     }
     
@@ -457,16 +488,41 @@
     // Обработчик нажатия кнопки генерации
     generateBtn.addEventListener('click', () => {
         const text = promptInput.value.trim();
+        const modelValue = generationModelSelectMain ? generationModelSelectMain.value : '';
         
         if (!text) {
             showStatus('Пожалуйста, введите запрос', 'error');
+            return;
+        }
+        
+        if (!modelValue) {
+            showStatus('Пожалуйста, выберите модель для генерации', 'error');
+            return;
+        }
+
+        // Находим выбранную модель
+        const [serverId, modelId] = modelValue.split(':');
+        const selectedModel = activeModels.find(m => m.serverId === serverId && m.modelId === modelId);
+        
+        if (!selectedModel) {
+            showStatus('Выбранная модель не найдена', 'error');
             return;
         }
 
         // Отправка сообщения в extension
         vscode.postMessage({
             command: 'generate',
-            text: text
+            text: text,
+            model: {
+                serverId: selectedModel.serverId,
+                modelId: selectedModel.modelId,
+                url: selectedModel.url,
+                apiKey: selectedModel.apiKey,
+                modelName: selectedModel.modelName,
+                temperature: selectedModel.temperature,
+                maxTokens: selectedModel.maxTokens,
+                systemPrompt: selectedModel.systemPrompt
+            }
         });
 
         // Обновление UI
@@ -484,9 +540,60 @@
     // Обработчик нажатия кнопки векторизации
     if (vectorizeBtn) {
         vectorizeBtn.addEventListener('click', () => {
+            const embedderModelValue = embedderModelSelect ? embedderModelSelect.value : '';
+            const summarizeModelValue = summarizeModelSelect ? summarizeModelSelect.value : '';
+            const enableSummarize = enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false;
+            
+            if (!embedderModelValue) {
+                showSettingsStatus('Пожалуйста, выберите модель эмбеддинга', 'error');
+                return;
+            }
+            
+            if (enableSummarize && !summarizeModelValue) {
+                showSettingsStatus('Пожалуйста, выберите модель для суммаризации', 'error');
+                return;
+            }
+            
+            // Находим выбранные модели
+            const [embedderServerId, embedderModelId] = embedderModelValue.split(':');
+            const embedderModel = activeModels.find(m => m.serverId === embedderServerId && m.modelId === embedderModelId);
+            
+            let summarizeModel = null;
+            if (enableSummarize && summarizeModelValue) {
+                const [summarizeServerId, summarizeModelId] = summarizeModelValue.split(':');
+                summarizeModel = activeModels.find(m => m.serverId === summarizeServerId && m.modelId === summarizeModelId);
+            }
+            
+            if (!embedderModel) {
+                showSettingsStatus('Выбранная модель эмбеддинга не найдена', 'error');
+                return;
+            }
+            
+            if (enableSummarize && !summarizeModel) {
+                showSettingsStatus('Выбранная модель для суммаризации не найдена', 'error');
+                return;
+            }
+
             // Отправка сообщения в extension
             vscode.postMessage({
-                command: 'vectorizeAll'
+                command: 'vectorizeAll',
+                embedderModel: {
+                    serverId: embedderModel.serverId,
+                    modelId: embedderModel.modelId,
+                    url: embedderModel.url,
+                    apiKey: embedderModel.apiKey,
+                    modelName: embedderModel.modelName
+                },
+                summarizeModel: summarizeModel ? {
+                    serverId: summarizeModel.serverId,
+                    modelId: summarizeModel.modelId,
+                    url: summarizeModel.url,
+                    apiKey: summarizeModel.apiKey,
+                    modelName: summarizeModel.modelName,
+                    temperature: summarizeModel.temperature,
+                    maxTokens: summarizeModel.maxTokens,
+                    systemPrompt: summarizeModel.systemPrompt
+                } : null
             });
 
             // Обновление UI
@@ -1568,17 +1675,26 @@
     
     // Сохранение сервера (создание или редактирование)
     if (saveServerBtn) {
-        saveServerBtn.addEventListener('click', () => {
+        saveServerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('Кнопка сохранения нажата');
+            
             const name = serverNameInput ? serverNameInput.value.trim() : '';
             const url = serverUrlInput ? serverUrlInput.value.trim() : '';
             const apiKey = serverApiKeyInput ? serverApiKeyInput.value.trim() : '';
 
+            console.log('Данные сервера:', { name, url, hasApiKey: !!apiKey, editingServerId });
+
             if (!name) {
+                console.warn('Не указано имя сервера');
                 showSettingsStatus('Пожалуйста, укажите наименование сервера', 'error');
                 return;
             }
 
             if (!url) {
+                console.warn('Не указан URL сервера');
                 showSettingsStatus('Пожалуйста, укажите URL сервера', 'error');
                 return;
             }
@@ -1587,13 +1703,15 @@
             try {
                 new URL(url);
             } catch (e) {
+                console.warn('Некорректный URL:', url);
                 showSettingsStatus('Некорректный URL сервера', 'error');
                 return;
             }
 
             if (editingServerId) {
                 // Редактирование существующего сервера
-                vscode.postMessage({
+                console.log('Отправка команды updateServer для сервера:', editingServerId);
+                const message = {
                     command: 'updateServer',
                     serverId: editingServerId,
                     server: {
@@ -1601,21 +1719,28 @@
                         url: url,
                         apiKey: apiKey
                     }
-                });
+                };
+                console.log('Отправляем сообщение:', message);
+                vscode.postMessage(message);
+                hideServerForm();
             } else {
                 // Создание нового сервера
-                vscode.postMessage({
+                console.log('Отправка команды addServer');
+                const message = {
                     command: 'addServer',
                     server: {
                         name: name,
                         url: url,
                         apiKey: apiKey
                     }
-                });
+                };
+                console.log('Отправляем сообщение:', message);
+                vscode.postMessage(message);
+                // Форма будет скрыта после получения ответа serverAdded или serverAddError
             }
-
-            hideServerForm();
         });
+    } else {
+        console.error('Кнопка save-server-btn не найдена!');
     }
     
     // Отмена создания/редактирования
@@ -1658,13 +1783,28 @@
             case 'serversList':
                 servers = message.servers || [];
                 renderServers();
+                // Обновляем список активных моделей после загрузки серверов
+                loadActiveModels();
+                break;
+            case 'activeModelsList':
+                activeModels = message.models || [];
+                updateModelSelects();
+                break;
+            case 'serverActiveToggled':
+            case 'modelActiveToggled':
+                // При изменении активности сервера или модели обновляем список активных моделей
+                loadActiveModels();
                 break;
             case 'serverAdded':
+                console.log('Получено сообщение serverAdded:', message);
                 showSettingsStatus('Сервер успешно добавлен', 'success');
+                hideServerForm(); // Скрываем форму после успешного добавления
                 loadServers();
                 break;
             case 'serverAddError':
+                console.error('Ошибка добавления сервера:', message.error);
                 showSettingsStatus(`Ошибка добавления сервера: ${message.error}`, 'error');
+                // Не скрываем форму при ошибке, чтобы пользователь мог исправить данные
                 break;
             case 'serverUpdated':
                 showSettingsStatus('Сервер успешно обновлен', 'success');
