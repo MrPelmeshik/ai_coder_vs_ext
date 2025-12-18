@@ -284,7 +284,7 @@ export class LLMService {
     private async _mockGenerateCode(prompt: string): Promise<string> {
         // Получаем задержку для mock генерации из настроек
         const config = vscode.workspace.getConfiguration('aiCoder');
-        const mockDelay = config.get<number>('providers.mockDelay') ?? 1500;
+        const mockDelay = config.get<number>(CONFIG_KEYS.PROVIDERS.MOCK_DELAY) ?? 1500;
         // Имитация задержки API
         await new Promise(resolve => setTimeout(resolve, mockDelay));
 
@@ -306,34 +306,34 @@ function generatedCode() {
         
         // Обновление настроек через VS Code Configuration API
         if (config.provider !== undefined) {
-            await workspaceConfig.update('llm.provider', config.provider, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.PROVIDER, config.provider, vscode.ConfigurationTarget.Global);
         }
         if (config.model !== undefined) {
-            await workspaceConfig.update('llm.model', config.model, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.MODEL, config.model, vscode.ConfigurationTarget.Global);
         }
         if (config.embedderModel !== undefined) {
-            await workspaceConfig.update('llm.embedderModel', config.embedderModel, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.EMBEDDER_MODEL, config.embedderModel, vscode.ConfigurationTarget.Global);
         }
         if (config.temperature !== undefined) {
-            await workspaceConfig.update('llm.temperature', config.temperature, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.TEMPERATURE, config.temperature, vscode.ConfigurationTarget.Global);
         }
         if (config.maxTokens !== undefined) {
-            await workspaceConfig.update('llm.maxTokens', config.maxTokens, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.MAX_TOKENS, config.maxTokens, vscode.ConfigurationTarget.Global);
         }
         if (config.baseUrl !== undefined) {
-            await workspaceConfig.update('llm.baseUrl', config.baseUrl, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.BASE_URL, config.baseUrl, vscode.ConfigurationTarget.Global);
         }
         if (config.localUrl !== undefined) {
-            await workspaceConfig.update('llm.localUrl', config.localUrl, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.LOCAL_URL, config.localUrl, vscode.ConfigurationTarget.Global);
         }
         if (config.timeout !== undefined) {
-            await workspaceConfig.update('llm.timeout', config.timeout, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.TIMEOUT, config.timeout, vscode.ConfigurationTarget.Global);
         }
         if (config.apiType !== undefined) {
-            await workspaceConfig.update('llm.apiType', config.apiType, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.API_TYPE, config.apiType, vscode.ConfigurationTarget.Global);
         }
         if (config.systemPrompt !== undefined) {
-            await workspaceConfig.update('llm.systemPrompt', config.systemPrompt, vscode.ConfigurationTarget.Global);
+            await workspaceConfig.update(CONFIG_KEYS.LLM.SYSTEM_PROMPT, config.systemPrompt, vscode.ConfigurationTarget.Global);
         }
         
         // API ключ сохраняется отдельно через SecretStorage

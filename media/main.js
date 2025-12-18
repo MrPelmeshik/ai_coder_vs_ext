@@ -211,31 +211,48 @@
 
     // Показ/скрытие полей в зависимости от провайдера
     function updateProviderFields() {
+        if (!providerSelect) {
+            console.warn('providerSelect не найден');
+            return;
+        }
+        
         const provider = providerSelect.value;
         const isOllama = provider === 'ollama';
         const isOpenAI = provider === 'openai';
         const needsApiKey = provider === 'openai' || provider === 'anthropic';
 
-        // Показ/скрытие полей
-        localUrlGroup.style.display = isOllama ? 'block' : 'none';
+        // Показ/скрытие полей с проверкой существования
+        if (localUrlGroup) {
+            localUrlGroup.style.display = isOllama ? 'block' : 'none';
+        }
         // baseUrl показываем для OpenAI (можно использовать для локальных моделей)
-        baseUrlGroup.style.display = isOpenAI ? 'block' : 'none';
-        apiTypeGroup.style.display = 'none'; // Больше не используется
-        localCheckGroup.style.display = (isOllama || isOpenAI) ? 'block' : 'none';
+        if (baseUrlGroup) {
+            baseUrlGroup.style.display = isOpenAI ? 'block' : 'none';
+        }
+        if (apiTypeGroup) {
+            apiTypeGroup.style.display = 'none'; // Больше не используется
+        }
+        if (localCheckGroup) {
+            localCheckGroup.style.display = (isOllama || isOpenAI) ? 'block' : 'none';
+        }
         
         // API ключ показываем для OpenAI и Anthropic (но можно не указывать для локальных моделей)
-        const apiKeyGroup = apiKeyInput.closest('.setting-group');
-        if (apiKeyGroup) {
-            apiKeyGroup.style.display = needsApiKey ? 'block' : 'none';
+        if (apiKeyInput) {
+            const apiKeyGroup = apiKeyInput.closest('.setting-group');
+            if (apiKeyGroup) {
+                apiKeyGroup.style.display = needsApiKey ? 'block' : 'none';
+            }
         }
 
         // Обновление placeholder для модели
-        if (isOllama) {
-            modelInput.placeholder = 'llama2, codellama, mistral, phi...';
-        } else if (isOpenAI) {
-            modelInput.placeholder = 'gpt-4, gpt-3.5-turbo (или название локальной модели)...';
-        } else {
-            modelInput.placeholder = 'gpt-4, gpt-3.5-turbo, claude-3-opus...';
+        if (modelInput) {
+            if (isOllama) {
+                modelInput.placeholder = 'llama2, codellama, mistral, phi...';
+            } else if (isOpenAI) {
+                modelInput.placeholder = 'gpt-4, gpt-3.5-turbo (или название локальной модели)...';
+            } else {
+                modelInput.placeholder = 'gpt-4, gpt-3.5-turbo, claude-3-opus...';
+            }
         }
     }
 
@@ -355,71 +372,74 @@
     });
 
     // Сохранение настроек
-    saveSettingsBtn.addEventListener('click', () => {
-        const config = {
-            provider: providerSelect.value,
-            apiKey: apiKeyInput.value.trim(),
-            model: modelInput.value.trim(),
-            embedderModel: embedderModelInput.value.trim(),
-            summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
-            enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
-            enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false,
-            enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
-            enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
-            temperature: parseFloat(temperatureInput.value),
-            maxTokens: parseInt(maxTokensInput.value),
-            baseUrl: baseUrlInput.value.trim(),
-            localUrl: localUrlInput.value.trim(),
-            timeout: parseInt(timeoutInput.value),
-            systemPrompt: systemPromptInput.value.trim()
-        };
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', () => {
+            const config = {
+                provider: providerSelect.value,
+                apiKey: apiKeyInput.value.trim(),
+                model: modelInput.value.trim(),
+                embedderModel: embedderModelInput.value.trim(),
+                summarizePrompt: summarizePromptInput ? summarizePromptInput.value.trim() : '',
+                enableOrigin: enableOriginCheckbox ? enableOriginCheckbox.checked : true,
+                enableSummarize: enableSummarizeCheckbox ? enableSummarizeCheckbox.checked : false,
+                enableVsOrigin: enableVsOriginCheckbox ? enableVsOriginCheckbox.checked : true,
+                enableVsSummarize: enableVsSummarizeCheckbox ? enableVsSummarizeCheckbox.checked : true,
+                temperature: parseFloat(temperatureInput.value),
+                maxTokens: parseInt(maxTokensInput.value),
+                baseUrl: baseUrlInput.value.trim(),
+                localUrl: localUrlInput.value.trim(),
+                timeout: parseInt(timeoutInput.value),
+                systemPrompt: systemPromptInput.value.trim()
+            };
 
-        // Валидация
-        if (!config.model) {
-            showSettingsStatus('Пожалуйста, укажите модель', 'error');
-            return;
-        }
+            // Валидация
+            if (!config.model) {
+                showSettingsStatus('Пожалуйста, укажите модель', 'error');
+                return;
+            }
 
-        if (isNaN(config.temperature) || config.temperature < 0 || config.temperature > 2) {
-            showSettingsStatus('Температура должна быть от 0 до 2', 'error');
-            return;
-        }
+            if (isNaN(config.temperature) || config.temperature < 0 || config.temperature > 2) {
+                showSettingsStatus('Температура должна быть от 0 до 2', 'error');
+                return;
+            }
 
-        if (isNaN(config.maxTokens) || config.maxTokens < 100 || config.maxTokens > 8000) {
-            showSettingsStatus('Максимум токенов должен быть от 100 до 8000', 'error');
-            return;
-        }
+            if (isNaN(config.maxTokens) || config.maxTokens < 100 || config.maxTokens > 8000) {
+                showSettingsStatus('Максимум токенов должен быть от 100 до 8000', 'error');
+                return;
+            }
 
-        if (isNaN(config.timeout) || config.timeout < 5000 || config.timeout > 300000) {
-            showSettingsStatus('Таймаут должен быть от 5000 до 300000 миллисекунд', 'error');
-            return;
-        }
+            if (isNaN(config.timeout) || config.timeout < 5000 || config.timeout > 300000) {
+                showSettingsStatus('Таймаут должен быть от 5000 до 300000 миллисекунд', 'error');
+                return;
+            }
 
-        // Отправка конфигурации
-        vscode.postMessage({
-            command: 'updateConfig',
-            config: config
+            // Отправка конфигурации
+            vscode.postMessage({
+                command: 'updateConfig',
+                config: config
+            });
+
+            saveSettingsBtn.disabled = true;
+            saveSettingsBtn.textContent = 'Сохранение...';
+            showSettingsStatus('Сохранение настроек...', 'info');
         });
-
-        saveSettingsBtn.disabled = true;
-        saveSettingsBtn.textContent = 'Сохранение...';
-        showSettingsStatus('Сохранение настроек...', 'info');
-    });
+    }
 
     // Сброс настроек
     // Все значения по умолчанию берутся из package.json через сервер
-    resetSettingsBtn.addEventListener('click', () => {
-        if (confirm('Вы уверены, что хотите сбросить настройки к значениям по умолчанию?')) {
-            // Отправляем команду сброса на сервер
-            // Сервер сбросит все настройки к значениям по умолчанию из package.json
-            // и отправит обновленную конфигурацию обратно в webview
+    if (resetSettingsBtn) {
+        resetSettingsBtn.addEventListener('click', () => {
+            // Блокируем кнопку сразу при нажатии
+            resetSettingsBtn.disabled = true;
+            // В sandboxed webview нельзя использовать confirm(), поэтому отправляем запрос на подтверждение
+            // в extension, который покажет диалог через VS Code API
             vscode.postMessage({
-                command: 'resetConfig'
+                command: 'requestResetConfig'
             });
-            
-            showSettingsStatus('Сброс настроек...', 'info');
-        }
-    });
+        });
+    } else {
+        console.error('Кнопка resetSettingsBtn не найдена в DOM');
+    }
 
     // Очистка хранилища
     clearStorageBtn.addEventListener('click', () => {
@@ -501,7 +521,58 @@
                 showStatus(`Ошибка: ${message.error}`, 'error');
                 break;
             case 'config':
-                updateSettingsUI(message.config);
+                try {
+                    updateSettingsUI(message.config);
+                } catch (error) {
+                    console.error('Ошибка обновления UI настроек:', error);
+                }
+                // Восстанавливаем кнопки после получения конфигурации
+                // Это должно происходить всегда, даже если updateSettingsUI выбросила ошибку
+                if (saveSettingsBtn) {
+                    saveSettingsBtn.disabled = false;
+                    saveSettingsBtn.textContent = 'Сохранить настройки';
+                }
+                if (resetSettingsBtn) {
+                    resetSettingsBtn.disabled = false;
+                }
+                break;
+            case 'configUpdateError':
+                // Восстанавливаем кнопку сохранения при ошибке
+                if (saveSettingsBtn) {
+                    saveSettingsBtn.disabled = false;
+                    saveSettingsBtn.textContent = 'Сохранить настройки';
+                }
+                showSettingsStatus(`Ошибка сохранения настроек: ${message.error}`, 'error');
+                break;
+            case 'configUpdated':
+                // Восстанавливаем кнопку сохранения после успешного сохранения
+                if (saveSettingsBtn) {
+                    saveSettingsBtn.disabled = false;
+                    saveSettingsBtn.textContent = 'Сохранить настройки';
+                }
+                break;
+            case 'resetConfigStarted':
+                // Кнопка уже заблокирована при нажатии, просто показываем статус
+                showSettingsStatus('Сброс настроек...', 'info');
+                break;
+            case 'resetConfigCancelled':
+                // Восстанавливаем кнопку, если пользователь отменил
+                if (resetSettingsBtn) {
+                    resetSettingsBtn.disabled = false;
+                }
+                break;
+            case 'configReset':
+                // Восстанавливаем кнопку сброса после успешного сброса
+                if (resetSettingsBtn) {
+                    resetSettingsBtn.disabled = false;
+                }
+                break;
+            case 'configResetError':
+                // Восстанавливаем кнопку сброса при ошибке
+                if (resetSettingsBtn) {
+                    resetSettingsBtn.disabled = false;
+                }
+                showSettingsStatus(`Ошибка сброса настроек: ${message.error}`, 'error');
                 break;
             case 'localServerStatus':
                 checkLocalBtn.disabled = false;
@@ -580,13 +651,16 @@
                 break;
         }
 
-        // Восстановление кнопок (кроме векторизации и поиска, они восстанавливаются отдельно)
-        generateBtn.disabled = false;
-        generateBtn.textContent = 'Сгенерировать код';
-        saveSettingsBtn.disabled = false;
-        saveSettingsBtn.textContent = 'Сохранить настройки';
-        searchBtn.disabled = false;
-        searchBtn.textContent = 'Найти похожие файлы';
+        // Восстановление кнопок только для определенных команд
+        // (кроме векторизации, поиска и настроек, они восстанавливаются отдельно)
+        if (message.command === 'error' || message.command === 'generationComplete' || message.command === 'generated') {
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Сгенерировать код';
+        }
+        if (message.command === 'searchResults' || message.command === 'searchError') {
+            searchBtn.disabled = false;
+            searchBtn.textContent = 'Найти похожие файлы';
+        }
     });
 
     /**

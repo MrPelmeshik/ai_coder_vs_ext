@@ -8,6 +8,7 @@ export type WebviewCommand =
     | 'getConfig'
     | 'updateConfig'
     | 'resetConfig'
+    | 'requestResetConfig'
     | 'checkLocalServer'
     | 'vectorizeAll'
     | 'search'
