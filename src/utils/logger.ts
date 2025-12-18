@@ -85,9 +85,6 @@ export class Logger {
         
         if (this.outputChannel) {
             this.outputChannel.appendLine(logLine);
-        } else {
-            // Fallback на console если outputChannel не инициализирован
-            console.log(logLine);
         }
     }
 

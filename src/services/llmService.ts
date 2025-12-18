@@ -244,8 +244,6 @@ export class LLMService {
         try {
             return await this._context.secrets.get(API_KEY_SECRET_KEY);
         } catch (error) {
-            // Logger может быть не инициализирован на этом этапе
-            console.error('Ошибка получения API ключа:', error);
             return undefined;
         }
     }
@@ -263,8 +261,6 @@ export class LLMService {
                 await this._reloadConfig();
             }
         } catch (error) {
-            // Logger может быть не инициализирован на этом этапе
-            console.error('Ошибка сохранения API ключа:', error);
             throw error;
         }
     }

@@ -212,7 +212,6 @@
     // Показ/скрытие полей в зависимости от провайдера
     function updateProviderFields() {
         if (!providerSelect) {
-            console.warn('providerSelect не найден');
             return;
         }
         
@@ -437,8 +436,6 @@
                 command: 'requestResetConfig'
             });
         });
-    } else {
-        console.error('Кнопка resetSettingsBtn не найдена в DOM');
     }
 
     // Очистка хранилища
@@ -524,7 +521,7 @@
                 try {
                     updateSettingsUI(message.config);
                 } catch (error) {
-                    console.error('Ошибка обновления UI настроек:', error);
+                    // Ошибка обновления UI настроек
                 }
                 // Восстанавливаем кнопки после получения конфигурации
                 // Это должно происходить всегда, даже если updateSettingsUI выбросила ошибку
@@ -671,9 +668,6 @@
         // VS Code Configuration API всегда возвращает дефолтное значение из package.json, если оно там указано
         if (config.provider) {
             providerSelect.value = config.provider;
-        } else {
-            // Если provider не пришел, это ошибка, но не блокируем обновление UI
-            console.error('Провайдер не указан в конфигурации');
         }
         // API ключ не показываем полностью, только индикатор
         if (config.hasApiKey) {
@@ -689,30 +683,22 @@
             summarizePromptInput.value = config.summarizePrompt || '';
         }
         if (enableOriginCheckbox) {
-            if (config.enableOrigin === undefined) {
-                console.error('enableOrigin не задан в конфигурации');
-            } else {
+            if (config.enableOrigin !== undefined) {
                 enableOriginCheckbox.checked = config.enableOrigin;
             }
         }
         if (enableSummarizeCheckbox) {
-            if (config.enableSummarize === undefined) {
-                console.error('enableSummarize не задан в конфигурации');
-            } else {
+            if (config.enableSummarize !== undefined) {
                 enableSummarizeCheckbox.checked = config.enableSummarize;
             }
         }
         if (enableVsOriginCheckbox) {
-            if (config.enableVsOrigin === undefined) {
-                console.error('enableVsOrigin не задан в конфигурации');
-            } else {
+            if (config.enableVsOrigin !== undefined) {
                 enableVsOriginCheckbox.checked = config.enableVsOrigin;
             }
         }
         if (enableVsSummarizeCheckbox) {
-            if (config.enableVsSummarize === undefined) {
-                console.error('enableVsSummarize не задан в конфигурации');
-            } else {
+            if (config.enableVsSummarize !== undefined) {
                 enableVsSummarizeCheckbox.checked = config.enableVsSummarize;
             }
         }

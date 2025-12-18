@@ -165,7 +165,6 @@ export class AICoderPanel {
             // Если произошла ошибка, логируем её, но не показываем пользователю,
             // так как это может быть временная проблема после сброса настроек
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            console.error('Ошибка в _sendConfigToWebview:', error);
             // Пытаемся отправить конфигурацию с дефолтными значениями
             try {
                 const config = await this._llmService.getConfig();
@@ -188,7 +187,6 @@ export class AICoderPanel {
                 });
             } catch (fallbackError) {
                 vscode.window.showErrorMessage(`Ошибка загрузки конфигурации: ${errorMessage}`);
-                console.error('Ошибка в fallback _sendConfigToWebview:', fallbackError);
             }
         }
     }
