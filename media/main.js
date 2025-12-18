@@ -46,6 +46,8 @@
         
         // Запрос конфигурации при загрузке
         messageBus.send('getConfig');
+        // Запрос списка активных моделей при загрузке
+        messageBus.send('getActiveModels');
     }
     
     /**

@@ -52,6 +52,12 @@ class Button {
      */
     onClick(handler) {
         if (this.element) {
+            // Удаляем предыдущий обработчик, если он был сохранен
+            if (this._clickHandler) {
+                this.element.removeEventListener('click', this._clickHandler);
+            }
+            // Сохраняем ссылку на обработчик для возможности удаления
+            this._clickHandler = handler;
             this.element.addEventListener('click', handler);
         }
     }

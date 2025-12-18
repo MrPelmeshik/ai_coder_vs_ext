@@ -767,6 +767,8 @@ export class AICoderPanel {
                     command: 'serversList',
                     servers: servers
                 });
+                // Отправляем обновленный список активных моделей
+                this._handleGetActiveModels();
             }, 50);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
@@ -811,6 +813,8 @@ export class AICoderPanel {
                     command: 'serversList',
                     servers: servers
                 });
+                // Отправляем обновленный список активных моделей
+                this._handleGetActiveModels();
             }, 50);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
@@ -842,6 +846,8 @@ export class AICoderPanel {
                     command: 'serversList',
                     servers: filteredServers
                 });
+                // Отправляем обновленный список активных моделей
+                this._handleGetActiveModels();
             }, 50);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
@@ -912,6 +918,9 @@ export class AICoderPanel {
                 serverId: serverId,
                 models: modelsWithSettings
             });
+            
+            // Отправляем обновленный список активных моделей
+            this._handleGetActiveModels();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             this._panel.webview.postMessage({
@@ -961,6 +970,9 @@ export class AICoderPanel {
                 serverId: serverId,
                 model: model
             });
+            
+            // Отправляем обновленный список активных моделей
+            this._handleGetActiveModels();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             this._panel.webview.postMessage({
@@ -991,6 +1003,9 @@ export class AICoderPanel {
                 serverId: serverId,
                 active: active
             });
+            
+            // Отправляем обновленный список активных моделей
+            this._handleGetActiveModels();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             this._panel.webview.postMessage({
@@ -1032,6 +1047,9 @@ export class AICoderPanel {
                 modelId: modelId,
                 active: active
             });
+            
+            // Отправляем обновленный список активных моделей
+            this._handleGetActiveModels();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             this._panel.webview.postMessage({

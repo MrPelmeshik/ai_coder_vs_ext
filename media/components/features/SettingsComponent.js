@@ -97,21 +97,28 @@ class SettingsComponent {
         // Переключение вкладок настроек
         this.settingsTabs.onChange((tabId) => {
             console.log('SettingsComponent: переключение на вкладку', tabId);
+            this._previousTab = tabId;
+            
             if (tabId === 'models') {
                 console.log('SettingsComponent: открыта вкладка "Подключения", загружаем серверы');
                 // Переинициализируем элементы ServerManagementComponent при открытии вкладки
-                if (window.serverManagementComponent && typeof window.serverManagementComponent._initializeElements === 'function') {
-                    console.log('SettingsComponent: переинициализируем элементы ServerManagementComponent');
-                    window.serverManagementComponent._initializeElements();
-                    // Принудительно перерисовываем серверы при открытии вкладки
-                    // Используем небольшую задержку, чтобы DOM успел обновиться
-                    setTimeout(() => {
+                // Используем задержку, чтобы убедиться, что DOM обновился и вкладка стала видимой
+                setTimeout(() => {
+                    if (window.serverManagementComponent && typeof window.serverManagementComponent._initializeElements === 'function') {
+                        console.log('SettingsComponent: переинициализируем элементы ServerManagementComponent');
+                        window.serverManagementComponent._initializeElements();
+                        // Также переинициализируем обработчики событий
+                        if (typeof window.serverManagementComponent._initializeEventListeners === 'function') {
+                            console.log('SettingsComponent: переинициализируем обработчики событий ServerManagementComponent');
+                            window.serverManagementComponent._initializeEventListeners();
+                        }
+                        // Принудительно перерисовываем серверы при открытии вкладки
                         if (typeof window.serverManagementComponent._renderServers === 'function') {
                             console.log('SettingsComponent: принудительно перерисовываем серверы при открытии вкладки');
                             window.serverManagementComponent._renderServers();
                         }
-                    }, 100);
-                }
+                    }
+                }, 50);
                 // Загружаем серверы
                 this.messageBus.send('getServers');
             }

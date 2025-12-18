@@ -23,6 +23,9 @@ class ServerManagementComponent {
         // Инициализация элементов - используем ленивую инициализацию, так как элементы могут быть в модальном окне
         this._initializeElements();
         
+        // Убеждаемся, что форма скрыта при инициализации
+        this._hideServerForm();
+        
         this._initializeEventListeners();
         this._subscribeToMessages();
     }
@@ -31,19 +34,70 @@ class ServerManagementComponent {
      * Инициализация элементов DOM (ленивая инициализация)
      */
     _initializeElements() {
-        // Кнопки
-        this.addServerBtn = new Button(document.getElementById('add-server-btn'));
-        this.saveServerBtn = new Button(document.getElementById('save-server-btn'));
-        this.cancelServerBtn = new Button(document.getElementById('cancel-server-btn'));
+        // Кнопки - пересоздаем только если элемент найден и объект еще не создан или элемент изменился
+        const addServerBtnElement = document.getElementById('add-server-btn');
+        if (addServerBtnElement) {
+            const wasRecreated = !this.addServerBtn || this.addServerBtn.element !== addServerBtnElement;
+            const computedStyle = window.getComputedStyle(addServerBtnElement);
+            
+            if (wasRecreated) {
+                this.addServerBtn = new Button(addServerBtnElement);
+            }
+            // Всегда переприкрепляем обработчик, чтобы убедиться, что он работает
+            // (на случай, если обработчик был потерян)
+            // Используем именованную функцию для возможности удаления
+            if (!this._addServerHandler) {
+                this._addServerHandler = () => {
+                    console.log('ServerManagementComponent: клик по кнопке добавления сервера');
+                    this._showServerForm();
+                };
+            }
+            this.addServerBtn.onClick(this._addServerHandler);
+        } else {
+            console.warn('ServerManagementComponent: кнопка add-server-btn не найдена');
+        }
+        
+        const saveServerBtnElement = document.getElementById('save-server-btn');
+        if (saveServerBtnElement) {
+            if (!this.saveServerBtn || this.saveServerBtn.element !== saveServerBtnElement) {
+                this.saveServerBtn = new Button(saveServerBtnElement);
+            }
+            this.saveServerBtn.onClick(() => this._handleSaveServer());
+        }
+        
+        const cancelServerBtnElement = document.getElementById('cancel-server-btn');
+        if (cancelServerBtnElement) {
+            if (!this.cancelServerBtn || this.cancelServerBtn.element !== cancelServerBtnElement) {
+                this.cancelServerBtn = new Button(cancelServerBtnElement);
+            }
+            this.cancelServerBtn.onClick(() => this._hideServerForm());
+        }
         
         // Элементы формы
         this.serverFormCard = document.getElementById('server-form-card');
         this.serversList = document.getElementById('servers-list');
         
-        // Поля формы
-        this.serverNameInput = new Input(document.getElementById('server-name-input'));
-        this.serverUrlInput = new Input(document.getElementById('server-url-input'));
-        this.serverApiKeyInput = new Input(document.getElementById('server-api-key-input'));
+        // Поля формы - пересоздаем только если элемент найден и объект еще не создан или элемент изменился
+        const serverNameInputElement = document.getElementById('server-name-input');
+        if (serverNameInputElement) {
+            if (!this.serverNameInput || this.serverNameInput.element !== serverNameInputElement) {
+                this.serverNameInput = new Input(serverNameInputElement);
+            }
+        }
+        
+        const serverUrlInputElement = document.getElementById('server-url-input');
+        if (serverUrlInputElement) {
+            if (!this.serverUrlInput || this.serverUrlInput.element !== serverUrlInputElement) {
+                this.serverUrlInput = new Input(serverUrlInputElement);
+            }
+        }
+        
+        const serverApiKeyInputElement = document.getElementById('server-api-key-input');
+        if (serverApiKeyInputElement) {
+            if (!this.serverApiKeyInput || this.serverApiKeyInput.element !== serverApiKeyInputElement) {
+                this.serverApiKeyInput = new Input(serverApiKeyInputElement);
+            }
+        }
     }
     
     /**
@@ -61,13 +115,32 @@ class ServerManagementComponent {
      */
     _initializeEventListeners() {
         // Добавление сервера
-        this.addServerBtn.onClick(() => this._showServerForm());
+        // Обработчик уже прикреплен в _initializeElements(), но прикрепляем еще раз для надежности
+        if (this.addServerBtn && this.addServerBtn.element) {
+            if (!this._addServerHandler) {
+                this._addServerHandler = () => {
+                    console.log('ServerManagementComponent: клик по кнопке добавления сервера (из _initializeEventListeners)');
+                    this._showServerForm();
+                };
+            }
+            this.addServerBtn.onClick(this._addServerHandler);
+        }
         
         // Сохранение сервера
-        this.saveServerBtn.onClick(() => this._handleSaveServer());
+        if (this.saveServerBtn && this.saveServerBtn.element) {
+            if (!this._saveServerHandler) {
+                this._saveServerHandler = () => this._handleSaveServer();
+            }
+            this.saveServerBtn.onClick(this._saveServerHandler);
+        }
         
         // Отмена
-        this.cancelServerBtn.onClick(() => this._hideServerForm());
+        if (this.cancelServerBtn && this.cancelServerBtn.element) {
+            if (!this._cancelServerHandler) {
+                this._cancelServerHandler = () => this._hideServerForm();
+            }
+            this.cancelServerBtn.onClick(this._cancelServerHandler);
+        }
     }
     
     /**
@@ -182,6 +255,7 @@ class ServerManagementComponent {
         // Сервер добавлен
         this.messageBus.subscribe('serverAdded', (message) => {
             console.log('ServerManagementComponent: получено сообщение serverAdded', message);
+            // Скрываем форму перед обновлением списка
             this._hideServerForm();
             
             // Переинициализируем элементы (на случай, если модальное окно было закрыто)
@@ -330,10 +404,21 @@ class ServerManagementComponent {
             // Продолжаем рендеринг, даже если элемент скрыт - данные должны быть установлены
         }
         
+        // Сохраняем форму, если она находится в списке, чтобы не потерять её при установке innerHTML
+        const formCard = this.serverFormCard;
+        const formWasInList = formCard && formCard.parentNode === serversList;
+        const formWasVisible = formCard && formCard.style.display !== 'none';
+        
         if (this.servers.length === 0) {
             serversList.innerHTML = '<div class="empty-servers-message">Серверы не добавлены</div>';
             console.log('ServerManagementComponent: отображено сообщение "Серверы не добавлены"');
             console.log('ServerManagementComponent: элемент виден:', isVisible);
+            
+            // Восстанавливаем форму, если она была в списке
+            if (formWasInList && formCard) {
+                serversList.insertBefore(formCard, serversList.firstChild);
+                formCard.style.display = 'none'; // Всегда скрываем при пустом списке
+            }
             return;
         }
         
@@ -346,6 +431,21 @@ class ServerManagementComponent {
         }
         
         serversList.innerHTML = html;
+        
+        // Восстанавливаем форму в начало списка после рендеринга
+        if (formCard) {
+            if (!formWasInList || formCard.parentNode !== serversList) {
+                // Если форма не в списке, добавляем её
+                serversList.insertBefore(formCard, serversList.firstChild);
+            } else if (serversList.firstChild !== formCard) {
+                // Если форма в списке, но не в начале, перемещаем её
+                serversList.insertBefore(formCard, serversList.firstChild);
+            }
+            // Убеждаемся, что форма скрыта (если она не была видима до рендеринга)
+            if (!formWasVisible) {
+                formCard.style.display = 'none';
+            }
+        }
         
         console.log('ServerManagementComponent: серверы отрендерены, HTML длина:', html.length);
         console.log('ServerManagementComponent: HTML превью:', html.substring(0, 200));
@@ -820,7 +920,11 @@ class ServerManagementComponent {
      * Показать форму сервера
      */
     _showServerForm(server = null) {
-        if (!this.serverFormCard) return;
+        console.log('ServerManagementComponent: _showServerForm вызван', server ? server.id : 'new');
+        if (!this.serverFormCard) {
+            console.warn('ServerManagementComponent: serverFormCard не найден');
+            return;
+        }
         
         this.editingServerId = server ? server.id : null;
         
@@ -834,11 +938,20 @@ class ServerManagementComponent {
             this.serverApiKeyInput.clear();
         }
         
-        this.serverFormCard.style.display = 'flex';
+        // Перемещаем форму в начало списка перед показом
         const serversList = this._getServersList();
-        if (serversList) {
+        if (serversList && this.serverFormCard.parentNode !== serversList) {
+            // Если форма не в списке, добавляем её
             serversList.insertBefore(this.serverFormCard, serversList.firstChild);
+        } else if (serversList && this.serverFormCard.parentNode === serversList) {
+            // Если форма уже в списке, перемещаем её в начало
+            if (this.serverFormCard !== serversList.firstChild) {
+                serversList.insertBefore(this.serverFormCard, serversList.firstChild);
+            }
         }
+        
+        // Показываем форму
+        this.serverFormCard.style.display = 'flex';
         
         setTimeout(() => this.serverNameInput.focus(), 100);
     }
