@@ -37,6 +37,23 @@ h2 {
     letter-spacing: -0.2px;
 }
 
+/* Закрепление заголовков разделов внутри вкладки настроек (кроме первого) */
+#tab-settings > h2:not(:first-child) {
+    position: sticky;
+    top: 80px;
+    z-index: 98;
+    background-color: var(--vscode-editor-background);
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-top: -8px;
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 12px;
+    padding-right: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
 h3 {
     margin: 0;
     font-size: 14px;
@@ -483,6 +500,18 @@ h3 {
 /* Вкладки */
 .header {
     margin-bottom: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background-color: var(--vscode-editor-background);
+    padding-top: 12px;
+    padding-bottom: 8px;
+    margin-top: -12px;
+    margin-left: -12px;
+    margin-right: -12px;
+    padding-left: 12px;
+    padding-right: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .tabs {
@@ -536,44 +565,6 @@ h3 {
     display: block;
 }
 
-/* Подвкладки в настройках */
-.settings-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 14px;
-    border-bottom: 1px solid var(--vscode-panel-border);
-}
-
-.settings-tab-button {
-    background: transparent;
-    border: none;
-    padding: 6px 12px;
-    cursor: pointer;
-    color: var(--vscode-foreground);
-    font-family: var(--vscode-font-family);
-    font-size: calc(var(--vscode-font-size) * 0.95);
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
-}
-
-.settings-tab-button:hover {
-    color: var(--vscode-textLink-foreground);
-    background-color: var(--vscode-list-hoverBackground);
-}
-
-.settings-tab-button.active {
-    color: var(--vscode-textLink-foreground);
-    border-bottom-color: var(--vscode-textLink-foreground);
-    font-weight: 600;
-}
-
-.settings-tab-content {
-    display: none;
-}
-
-.settings-tab-content.active {
-    display: block;
-}
 
 /* Настройки */
 .settings-section {
@@ -640,6 +631,7 @@ h3 {
     background: var(--vscode-scrollbarSlider-background);
     outline: none;
     -webkit-appearance: none;
+    appearance: none;
 }
 
 .setting-slider::-webkit-slider-thumb {

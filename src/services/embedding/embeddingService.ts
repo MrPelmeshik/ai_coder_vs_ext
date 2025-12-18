@@ -148,26 +148,13 @@ export class EmbeddingService {
 
             // Получаем настройки векторизации
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-            const enableOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN);
-            if (enableOrigin === undefined) {
-                throw new ConfigError('vectorization.enableOrigin не задан в настройках');
-            }
-            const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE);
-            if (enableSummarize === undefined) {
-                throw new ConfigError('vectorization.enableSummarize не задан в настройках');
-            }
-            const enableVsOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN);
-            if (enableVsOrigin === undefined) {
-                throw new ConfigError('vectorization.enableVsOrigin не задан в настройках');
-            }
-            const enableVsSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE);
-            if (enableVsSummarize === undefined) {
-                throw new ConfigError('vectorization.enableVsSummarize не задан в настройках');
-            }
-            const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT);
-            if (!summarizePrompt) {
-                throw new ConfigError('vectorization.summarizePrompt не указан в настройках');
-            }
+            // Используем дефолтные значения из package.json для консистентности с panel.ts
+            const enableOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN) ?? true;
+            const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false;
+            const enableVsOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN) ?? true;
+            const enableVsSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE) ?? true;
+            const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) || 
+                'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.';
             const vectorizationConfig = {
                 embedderModel: config.embedderModel!,
                 enableOrigin,
@@ -349,18 +336,11 @@ export class EmbeddingService {
         ConfigValidator.validateEmbeddingConfig(config);
         
         const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-        const enableOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN);
-        if (enableOrigin === undefined) {
-            throw new ConfigError('vectorization.enableOrigin не задан в настройках');
-        }
-        const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE);
-        if (enableSummarize === undefined) {
-            throw new ConfigError('vectorization.enableSummarize не задан в настройках');
-        }
-        const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT);
-        if (!summarizePrompt) {
-            throw new ConfigError('vectorization.summarizePrompt не указан в настройках');
-        }
+        // Используем дефолтные значения из package.json для консистентности с panel.ts
+        const enableOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN) ?? true;
+        const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false;
+        const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) || 
+            'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.';
         const vectorizationConfig = {
             embedderModel: config.embedderModel!,
             enableOrigin,

@@ -95,11 +95,7 @@
             
             // При открытии вкладки настроек запрашиваем количество записей
             if (targetTab === 'settings') {
-                // Проверяем, какая подвкладка активна
-                const activeSettingsTab = document.querySelector('.settings-tab-button.active');
-                if (activeSettingsTab && activeSettingsTab.getAttribute('data-settings-tab') === 'vectorization') {
-                    requestStorageCount();
-                }
+                requestStorageCount();
             }
             
             // При открытии вкладки поиска загружаем все записи
@@ -111,27 +107,6 @@
         });
     });
 
-    // Управление подвкладками в настройках
-    const settingsTabButtons = document.querySelectorAll('.settings-tab-button');
-    const settingsTabContents = document.querySelectorAll('.settings-tab-content');
-    
-    settingsTabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const targetTab = button.getAttribute('data-settings-tab');
-            
-            // Обновление активных подвкладок
-            settingsTabButtons.forEach(btn => btn.classList.remove('active'));
-            settingsTabContents.forEach(content => content.classList.remove('active'));
-            
-            button.classList.add('active');
-            document.getElementById(`settings-tab-${targetTab}`).classList.add('active');
-            
-            // При открытии вкладки векторизации запрашиваем количество записей
-            if (targetTab === 'vectorization') {
-                requestStorageCount();
-            }
-        });
-    });
 
     // Обновление количества записей при нажатии на кнопку
     if (refreshStorageCountBtn) {
@@ -295,12 +270,9 @@
     // Запрос конфигурации при загрузке (сохраненные настройки пользователя)
     vscode.postMessage({ command: 'getConfig' });
     
-    // Запрос количества записей при загрузке (если открыта вкладка векторизации)
-    // Проверяем, активна ли вкладка настроек и подвкладка векторизации
+    // Запрос количества записей при загрузке (если открыта вкладка настроек)
     const settingsTab = document.getElementById('tab-settings');
-    const vectorizationTab = document.getElementById('settings-tab-vectorization');
-    if (settingsTab && settingsTab.classList.contains('active') && 
-        vectorizationTab && vectorizationTab.classList.contains('active')) {
+    if (settingsTab && settingsTab.classList.contains('active')) {
         requestStorageCount();
     }
 
@@ -759,14 +731,8 @@
      * Задержка автоматического скрытия берется из настроек через сервер
      */
     function showSettingsStatus(message, type) {
-        // Определяем, какая вкладка активна
-        const activeSettingsTab = document.querySelector('.settings-tab-button.active');
-        const isVectorizationTab = activeSettingsTab && activeSettingsTab.getAttribute('data-settings-tab') === 'vectorization';
-        
-        // Показываем статус в соответствующей секции
-        const statusSection = isVectorizationTab && vectorizationStatusSection 
-            ? vectorizationStatusSection 
-            : settingsStatusSection;
+        // Показываем статус в секции настроек
+        const statusSection = settingsStatusSection;
         
         if (statusSection) {
             statusSection.textContent = message;

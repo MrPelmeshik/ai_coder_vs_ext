@@ -859,145 +859,136 @@ export class AICoderPanel {
 
                     <!-- Вкладка настроек -->
                     <div class="tab-content" id="tab-settings">
-                        <div class="settings-tabs">
-                            <button class="settings-tab-button active" data-settings-tab="llm">LLM</button>
-                            <button class="settings-tab-button" data-settings-tab="vectorization">Векторизация</button>
-                        </div>
-
-                        <!-- Подвкладка LLM -->
-                        <div class="settings-tab-content active" id="settings-tab-llm">
-                            <h2>Настройки LLM</h2>
-                            
-                            <div class="settings-grid">
-                                <div class="setting-group">
-                                    <label for="provider-select">Провайдер:</label>
-                                    <select id="provider-select" class="setting-input">
-                                        <option value="openai" selected>OpenAI</option>
-                                        <option value="anthropic">Anthropic Claude</option>
-                                        <option value="ollama">Ollama</option>
-                                    </select>
-                                </div>
-
-                                <div class="setting-group">
-                                    <label for="model-input">Модель LLM:</label>
-                                    <input 
-                                        type="text" 
-                                        id="model-input" 
-                                        class="setting-input"
-                                        placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
-                                    />
-                                    <small class="setting-hint">Название модели вашего провайдера</small>
-                                </div>
+                        <h2>Настройки LLM</h2>
+                        
+                        <div class="settings-grid">
+                            <div class="setting-group">
+                                <label for="provider-select">Провайдер:</label>
+                                <select id="provider-select" class="setting-input">
+                                    <option value="openai" selected>OpenAI</option>
+                                    <option value="anthropic">Anthropic Claude</option>
+                                    <option value="ollama">Ollama</option>
+                                </select>
                             </div>
 
                             <div class="setting-group">
-                                <label for="api-key-input">API Ключ:</label>
-                                <div class="api-key-wrapper">
-                                    <input 
-                                        type="password" 
-                                        id="api-key-input" 
-                                        class="setting-input"
-                                        placeholder="Введите ваш API ключ"
-                                    />
-                                    <button id="toggle-api-key" class="toggle-button" title="Показать/скрыть">👁</button>
-                                </div>
-                                <small class="setting-hint">API ключ хранится в безопасном хранилище VS Code</small>
+                                <label for="model-input">Модель LLM:</label>
+                                <input 
+                                    type="text" 
+                                    id="model-input" 
+                                    class="setting-input"
+                                    placeholder="gpt-4, gpt-3.5-turbo, claude-3-opus..."
+                                />
+                                <small class="setting-hint">Название модели вашего провайдера</small>
                             </div>
-
-                            <div class="settings-grid">
-                                <div class="setting-group">
-                                    <label for="temperature-input">Температура: <span id="temperature-value">0.7</span></label>
-                                    <input 
-                                        type="range" 
-                                        id="temperature-input" 
-                                        class="setting-slider"
-                                        min="0" 
-                                        max="2" 
-                                        step="0.1" 
-                                        value="0.7"
-                                    />
-                                    <small class="setting-hint">Контролирует креативность ответов (0 = детерминированный, 2 = очень креативный)</small>
-                                </div>
-
-                                <div class="setting-group">
-                                    <label for="max-tokens-input">Максимум токенов:</label>
-                                    <input 
-                                        type="number" 
-                                        id="max-tokens-input" 
-                                        class="setting-input"
-                                        min="100" 
-                                        max="8000" 
-                                        value="2000"
-                                    />
-                                    <small class="setting-hint">Максимальная длина ответа в токенах</small>
-                                </div>
-                            </div>
-
-                            <div class="settings-grid">
-                                <div class="setting-group" id="local-url-group" style="display: none;">
-                                    <label for="local-url-input">URL локального сервера:</label>
-                                    <input 
-                                        type="text" 
-                                        id="local-url-input" 
-                                        class="setting-input"
-                                        placeholder="http://localhost:11434"
-                                    />
-                                    <small class="setting-hint">URL для Ollama (по умолчанию: http://localhost:11434)</small>
-                                </div>
-
-                                <div class="setting-group" id="base-url-group" style="display: none;">
-                                    <label for="base-url-input">URL сервера (опционально):</label>
-                                    <input 
-                                        type="text" 
-                                        id="base-url-input" 
-                                        class="setting-input"
-                                        placeholder="http://localhost:1234/v1"
-                                    />
-                                    <small class="setting-hint">Для локальных моделей (LM Studio, LocalAI и т.д.). Если не указан, используется облачный OpenAI API</small>
-                                </div>
-
-                                <div class="setting-group">
-                                    <label for="timeout-input">Таймаут (мс):</label>
-                                    <input 
-                                        type="number" 
-                                        id="timeout-input" 
-                                        class="setting-input"
-                                        min="5000" 
-                                        max="300000" 
-                                        value="30000"
-                                    />
-                                    <small class="setting-hint">Максимальное время ожидания ответа</small>
-                                </div>
-                            </div>
-
-                                <div class="setting-group" id="local-check-group" style="display: none;">
-                                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                        <button id="check-local-btn" class="secondary-button" style="margin-left: 0;">Проверить подключение</button>
-                                        <div id="local-status" class="local-status"></div>
-                                    </div>
-                                </div>
-
-                                <div class="setting-group">
-                                    <label for="system-prompt-input">Системный промпт:</label>
-                                    <textarea 
-                                        id="system-prompt-input" 
-                                        class="setting-input"
-                                        rows="4"
-                                        placeholder="Оставьте пустым для использования значения по умолчанию из настроек VS Code"
-                                    ></textarea>
-                                    <small class="setting-hint">Системный промпт определяет роль и поведение модели. Если не указан, используется значение по умолчанию из настроек.</small>
-                                </div>
-
-                            <div class="button-section">
-                                <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
-                                <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
-                            </div>
-
-                            <div class="status-section" id="settings-status-section"></div>
                         </div>
 
-                        <!-- Подвкладка Векторизация -->
-                        <div class="settings-tab-content" id="settings-tab-vectorization">
+                        <div class="setting-group">
+                            <label for="api-key-input">API Ключ:</label>
+                            <div class="api-key-wrapper">
+                                <input 
+                                    type="password" 
+                                    id="api-key-input" 
+                                    class="setting-input"
+                                    placeholder="Введите ваш API ключ"
+                                />
+                                <button id="toggle-api-key" class="toggle-button" title="Показать/скрыть">👁</button>
+                            </div>
+                            <small class="setting-hint">API ключ хранится в безопасном хранилище VS Code</small>
+                        </div>
+
+                        <div class="settings-grid">
+                            <div class="setting-group">
+                                <label for="temperature-input">Температура: <span id="temperature-value">0.7</span></label>
+                                <input 
+                                    type="range" 
+                                    id="temperature-input" 
+                                    class="setting-slider"
+                                    min="0" 
+                                    max="2" 
+                                    step="0.1" 
+                                    value="0.7"
+                                />
+                                <small class="setting-hint">Контролирует креативность ответов (0 = детерминированный, 2 = очень креативный)</small>
+                            </div>
+
+                            <div class="setting-group">
+                                <label for="max-tokens-input">Максимум токенов:</label>
+                                <input 
+                                    type="number" 
+                                    id="max-tokens-input" 
+                                    class="setting-input"
+                                    min="100" 
+                                    max="8000" 
+                                    value="2000"
+                                />
+                                <small class="setting-hint">Максимальная длина ответа в токенах</small>
+                            </div>
+                        </div>
+
+                        <div class="settings-grid">
+                            <div class="setting-group" id="local-url-group" style="display: none;">
+                                <label for="local-url-input">URL локального сервера:</label>
+                                <input 
+                                    type="text" 
+                                    id="local-url-input" 
+                                    class="setting-input"
+                                    placeholder="http://localhost:11434"
+                                />
+                                <small class="setting-hint">URL для Ollama (по умолчанию: http://localhost:11434)</small>
+                            </div>
+
+                            <div class="setting-group" id="base-url-group" style="display: none;">
+                                <label for="base-url-input">URL сервера (опционально):</label>
+                                <input 
+                                    type="text" 
+                                    id="base-url-input" 
+                                    class="setting-input"
+                                    placeholder="http://localhost:1234/v1"
+                                />
+                                <small class="setting-hint">Для локальных моделей (LM Studio, LocalAI и т.д.). Если не указан, используется облачный OpenAI API</small>
+                            </div>
+
+                            <div class="setting-group">
+                                <label for="timeout-input">Таймаут (мс):</label>
+                                <input 
+                                    type="number" 
+                                    id="timeout-input" 
+                                    class="setting-input"
+                                    min="5000" 
+                                    max="300000" 
+                                    value="30000"
+                                />
+                                <small class="setting-hint">Максимальное время ожидания ответа</small>
+                            </div>
+                        </div>
+
+                        <div class="setting-group" id="local-check-group" style="display: none;">
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <button id="check-local-btn" class="secondary-button" style="margin-left: 0;">Проверить подключение</button>
+                                <div id="local-status" class="local-status"></div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="system-prompt-input">Системный промпт:</label>
+                            <textarea 
+                                id="system-prompt-input" 
+                                class="setting-input"
+                                rows="4"
+                                placeholder="Оставьте пустым для использования значения по умолчанию из настроек VS Code"
+                            ></textarea>
+                            <small class="setting-hint">Системный промпт определяет роль и поведение модели. Если не указан, используется значение по умолчанию из настроек.</small>
+                        </div>
+
+                        <div class="button-section">
+                            <button id="save-settings-btn" class="generate-button">Сохранить настройки</button>
+                            <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
+                        </div>
+
+                        <div class="status-section" id="settings-status-section"></div>
+
+                        <div style="margin-top: 24px; padding-top: 16px; border-top: 2px solid var(--vscode-panel-border);">
                             <h2>Настройки векторизации</h2>
                             
                             <div class="setting-group">
@@ -1054,33 +1045,33 @@ export class AICoderPanel {
                             </div>
 
                             <div class="status-section" id="vectorization-status-section"></div>
+                        </div>
 
-                            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--vscode-panel-border);">
-                                <h2>Хранилище эмбеддингов</h2>
-                                <div class="setting-group storage-status-group">
-                                    <div class="storage-status-container">
-                                        <div class="storage-status-item">
-                                            <div class="storage-status-label">📊 Записей:</div>
-                                            <div class="storage-status-value" id="storage-count">—</div>
-                                        </div>
-                                        <div class="storage-status-item">
-                                            <div class="storage-status-label">💾 Размер:</div>
-                                            <div class="storage-status-value" id="storage-size">—</div>
-                                        </div>
+                        <div style="margin-top: 24px; padding-top: 16px; border-top: 2px solid var(--vscode-panel-border);">
+                            <h2>Хранилище эмбеддингов</h2>
+                            <div class="setting-group storage-status-group">
+                                <div class="storage-status-container">
+                                    <div class="storage-status-item">
+                                        <div class="storage-status-label">📊 Записей:</div>
+                                        <div class="storage-status-value" id="storage-count">—</div>
                                     </div>
-                                    <div class="storage-actions">
-                                        <button id="refresh-storage-count-btn" class="secondary-button">
-                                            🔄 Обновить
-                                        </button>
-                                        <button id="clear-storage-btn" class="secondary-button danger-button">
-                                            🗑️ Очистить хранилище
-                                        </button>
+                                    <div class="storage-status-item">
+                                        <div class="storage-status-label">💾 Размер:</div>
+                                        <div class="storage-status-value" id="storage-size">—</div>
                                     </div>
-                                    <p style="color: var(--vscode-descriptionForeground); margin-top: 10px; font-size: 11px; line-height: 1.4;">
-                                        Очистка хранилища удалит все векторизованные данные. 
-                                        После очистки необходимо будет заново выполнить векторизацию файлов.
-                                    </p>
                                 </div>
+                                <div class="storage-actions">
+                                    <button id="refresh-storage-count-btn" class="secondary-button">
+                                        🔄 Обновить
+                                    </button>
+                                    <button id="clear-storage-btn" class="secondary-button danger-button">
+                                        🗑️ Очистить хранилище
+                                    </button>
+                                </div>
+                                <p style="color: var(--vscode-descriptionForeground); margin-top: 10px; font-size: 11px; line-height: 1.4;">
+                                    Очистка хранилища удалит все векторизованные данные. 
+                                    После очистки необходимо будет заново выполнить векторизацию файлов.
+                                </p>
                             </div>
                         </div>
                     </div>
