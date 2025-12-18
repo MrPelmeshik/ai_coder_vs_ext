@@ -22,6 +22,7 @@ export class EmbeddingService {
     private _fileStatusService: FileStatusService;
     private _context: vscode.ExtensionContext;
     private _isProcessing: boolean = false;
+    private _isInitialized: boolean = false;
     
     private _embeddingProvider: any;
     private _textSummarizer: TextSummarizer;
@@ -72,6 +73,33 @@ export class EmbeddingService {
             this._fileStatusService,
             this._llmService
         );
+        
+        this._isInitialized = true;
+    }
+
+    /**
+     * Проверка инициализации и автоматическая инициализация при необходимости
+     */
+    private async _ensureInitialized(): Promise<void> {
+        Logger.debug(`[EmbeddingService] Проверка инициализации: _isInitialized=${this._isInitialized}, _embeddingProvider=${!!this._embeddingProvider}, _fileVectorizer=${!!this._fileVectorizer}, _directoryVectorizer=${!!this._directoryVectorizer}`);
+        
+        if (!this._isInitialized || !this._embeddingProvider || !this._fileVectorizer || !this._directoryVectorizer) {
+            Logger.info('[EmbeddingService] Сервис не инициализирован, выполняется инициализация...');
+            try {
+                await this.initialize();
+                Logger.info('[EmbeddingService] Инициализация завершена успешно');
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                const errorStack = error instanceof Error ? error.stack : undefined;
+                Logger.error(`[EmbeddingService] Ошибка при инициализации: ${errorMessage}`, error as Error);
+                if (errorStack) {
+                    Logger.error(`[EmbeddingService] Стек ошибки инициализации: ${errorStack}`, error as Error);
+                }
+                throw error;
+            }
+        } else {
+            Logger.debug('[EmbeddingService] Сервис уже инициализирован');
+        }
     }
 
     /**
@@ -79,8 +107,36 @@ export class EmbeddingService {
      * Обработка идет от элементов с максимальной вложенностью к корню дерева
      */
     async vectorizeAllUnprocessed(workspaceFolder?: vscode.WorkspaceFolder): Promise<{ processed: number; errors: number }> {
+        // Принудительно выводим в консоль для отладки
+        console.log('[EmbeddingService] === НАЧАЛО ВЕКТОРИЗАЦИИ ===');
+        console.log('[EmbeddingService] Проверка логгера...');
+        
+        // Проверяем, что логгер работает
+        try {
+            Logger.info('[EmbeddingService] Начало векторизации всех необработанных файлов');
+            console.log('[EmbeddingService] Логгер работает, логирование начато');
+        } catch (e) {
+            console.error('[EmbeddingService] ОШИБКА при логировании:', e);
+        }
+        
         if (this._isProcessing) {
+            console.warn('[EmbeddingService] Векторизация уже выполняется');
+            Logger.warn('[EmbeddingService] Векторизация уже выполняется');
             throw new VectorizationError('Векторизация уже выполняется');
+        }
+
+        // Проверяем и инициализируем сервис при необходимости
+        console.log('[EmbeddingService] Проверка инициализации сервиса...');
+        Logger.info('[EmbeddingService] Проверка инициализации сервиса...');
+        try {
+            await this._ensureInitialized();
+            console.log('[EmbeddingService] Сервис инициализирован');
+            Logger.info('[EmbeddingService] Сервис инициализирован');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[EmbeddingService] ОШИБКА инициализации: ${errorMessage}`, error);
+            Logger.error(`[EmbeddingService] Ошибка при инициализации: ${errorMessage}`, error as Error);
+            throw error;
         }
 
         this._isProcessing = true;
@@ -90,14 +146,21 @@ export class EmbeddingService {
         try {
             const folder = workspaceFolder || vscode.workspace.workspaceFolders?.[0];
             if (!folder) {
+                Logger.error('[EmbeddingService] Не открыта рабочая область');
                 throw new VectorizationError('Не открыта рабочая область');
             }
 
             const rootPath = folder.uri.fsPath;
+            Logger.info(`[EmbeddingService] Корневой путь: ${rootPath}`);
             
             // Получаем конфигурацию для модели эмбеддинга
+            Logger.info('[EmbeddingService] Получение конфигурации LLM...');
             const config = await this._llmService.getConfig();
+            Logger.info(`[EmbeddingService] Конфигурация получена: provider=${config.provider}, embedderModel=${config.embedderModel}`);
+            
+            Logger.info('[EmbeddingService] Валидация конфигурации эмбеддинга...');
             ConfigValidator.validateEmbeddingConfig(config);
+            Logger.info('[EmbeddingService] Конфигурация валидна');
 
             // Получаем настройки векторизации
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
@@ -141,16 +204,28 @@ export class EmbeddingService {
             }> = [];
 
             // Рекурсивно собираем все файлы и директории
+            Logger.info('[EmbeddingService] Сбор файлов и директорий...');
             await this._collectItems(rootPath, null, 0, itemsToProcess);
+            Logger.info(`[EmbeddingService] Собрано элементов для обработки: ${itemsToProcess.length}`);
 
             // Сортируем по глубине: сначала самые глубокие (максимальная вложенность)
             itemsToProcess.sort((a, b) => b.depth - a.depth);
+            Logger.info('[EmbeddingService] Начало обработки элементов...');
 
             // Обрабатываем элементы в порядке от максимальной вложенности к корню
-            for (const item of itemsToProcess) {
+            console.log(`[EmbeddingService] Начинаем обработку ${itemsToProcess.length} элементов`);
+            Logger.info(`[EmbeddingService] Начинаем обработку ${itemsToProcess.length} элементов`);
+            
+            for (let i = 0; i < itemsToProcess.length; i++) {
+                const item = itemsToProcess[i];
+                console.log(`[EmbeddingService] [${i + 1}/${itemsToProcess.length}] Обработка ${item.type}: ${item.path} (глубина: ${item.depth})`);
+                Logger.info(`[EmbeddingService] [${i + 1}/${itemsToProcess.length}] Обработка ${item.type}: ${item.path} (глубина: ${item.depth})`);
+                
                 try {
                     // Пропускаем корневую директорию
                     if (item.type === 'directory' && item.depth === 0) {
+                        console.log(`[EmbeddingService] Пропуск корневой директории: ${item.path}`);
+                        Logger.info(`[EmbeddingService] Пропуск корневой директории: ${item.path}`);
                         continue;
                     }
 
@@ -164,6 +239,8 @@ export class EmbeddingService {
                     }
 
                     if (item.type === 'file') {
+                        console.log(`[EmbeddingService] Вызов vectorizeFile для: ${item.path}`);
+                        Logger.info(`[EmbeddingService] Вызов vectorizeFile для: ${item.path}`);
                         const result = await this._fileVectorizer.vectorizeFile(
                             item.path,
                             parentId,
@@ -174,9 +251,13 @@ export class EmbeddingService {
                                 summarizePrompt: vectorizationConfig.summarizePrompt
                             }
                         );
+                        console.log(`[EmbeddingService] Результат vectorizeFile для ${item.path}: processed=${result.processed}, errors=${result.errors}`);
+                        Logger.info(`[EmbeddingService] Результат vectorizeFile для ${item.path}: processed=${result.processed}, errors=${result.errors}`);
                         processed += result.processed;
                         errors += result.errors;
                     } else {
+                        console.log(`[EmbeddingService] Вызов vectorizeDirectory для: ${item.path}`);
+                        Logger.info(`[EmbeddingService] Вызов vectorizeDirectory для: ${item.path}`);
                         const result = await this._directoryVectorizer.vectorizeDirectory(
                             item.path,
                             parentId,
@@ -187,19 +268,50 @@ export class EmbeddingService {
                                 enableVsSummarize: vectorizationConfig.enableVsSummarize
                             }
                         );
+                        console.log(`[EmbeddingService] Результат vectorizeDirectory для ${item.path}: processed=${result.processed}, errors=${result.errors}`);
+                        Logger.info(`[EmbeddingService] Результат vectorizeDirectory для ${item.path}: processed=${result.processed}, errors=${result.errors}`);
                         processed += result.processed;
                         errors += result.errors;
                     }
                 } catch (error) {
                     errors++;
-                    Logger.error(`Ошибка обработки ${item.type} ${item.path}`, error as Error);
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    const errorStack = error instanceof Error ? error.stack : undefined;
+                    console.error(`[EmbeddingService] ИСКЛЮЧЕНИЕ при обработке ${item.type} ${item.path}: ${errorMessage}`, error);
+                    if (errorStack) {
+                        console.error(`[EmbeddingService] Стек ошибки: ${errorStack}`);
+                    }
+                    Logger.error(`Ошибка обработки ${item.type} ${item.path}: ${errorMessage}`, error as Error);
+                    if (errorStack) {
+                        Logger.error(`Стек ошибки для ${item.path}: ${errorStack}`, error as Error);
+                    }
                 }
+                
+                console.log(`[EmbeddingService] Текущий прогресс: processed=${processed}, errors=${errors}`);
             }
 
+            console.log(`[EmbeddingService] Векторизация завершена. Обработано: ${processed}, Ошибок: ${errors}`);
+            Logger.info(`[EmbeddingService] Векторизация завершена. Обработано: ${processed}, Ошибок: ${errors}`);
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            console.error(`[EmbeddingService] КРИТИЧЕСКАЯ ОШИБКА: ${errorMessage}`, error);
+            if (errorStack) {
+                console.error(`[EmbeddingService] Стек ошибки: ${errorStack}`);
+            }
+            Logger.error(`[EmbeddingService] Критическая ошибка при векторизации: ${errorMessage}`, error as Error);
+            if (errorStack) {
+                Logger.error(`[EmbeddingService] Стек ошибки: ${errorStack}`, error as Error);
+            }
+            throw error;
         } finally {
             this._isProcessing = false;
+            console.log('[EmbeddingService] Флаг обработки сброшен');
+            Logger.info('[EmbeddingService] Флаг обработки сброшен');
         }
 
+        console.log(`[EmbeddingService] === КОНЕЦ ВЕКТОРИЗАЦИИ: processed=${processed}, errors=${errors} ===`);
         return { processed, errors };
     }
 
@@ -213,7 +325,9 @@ export class EmbeddingService {
         items: Array<{ path: string; type: 'file' | 'directory'; depth: number; parentPath: string | null }>
     ): Promise<void> {
         try {
+            Logger.debug(`[EmbeddingService] Сбор элементов из директории: ${dirPath} (глубина: ${depth})`);
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            Logger.debug(`[EmbeddingService] Найдено записей в ${dirPath}: ${entries.length}`);
             
             for (const entry of entries) {
                 const itemPath = path.join(dirPath, entry.name);
@@ -225,9 +339,11 @@ export class EmbeddingService {
                         depth: depth,
                         parentPath: parentPath
                     });
+                    Logger.debug(`[EmbeddingService] Добавлен файл: ${itemPath}`);
                 } else if (entry.isDirectory()) {
                     // Пропускаем служебные директории
                     if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+                        Logger.debug(`[EmbeddingService] Пропущена служебная директория: ${itemPath}`);
                         continue;
                     }
                     
@@ -238,13 +354,15 @@ export class EmbeddingService {
                         depth: depth,
                         parentPath: parentPath
                     });
+                    Logger.debug(`[EmbeddingService] Добавлена директория: ${itemPath}`);
                     
                     // Рекурсивно собираем элементы из поддиректории
                     await this._collectItems(itemPath, itemPath, depth + 1, items);
                 }
             }
         } catch (error) {
-            Logger.error(`Ошибка сбора элементов из ${dirPath}`, error as Error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            Logger.error(`[EmbeddingService] Ошибка сбора элементов из ${dirPath}: ${errorMessage}`, error as Error);
         }
     }
 
@@ -252,6 +370,9 @@ export class EmbeddingService {
      * Векторизация конкретного файла
      */
     async vectorizeFile(fileUri: vscode.Uri, kind?: string): Promise<string> {
+        // Проверяем и инициализируем сервис при необходимости
+        await this._ensureInitialized();
+
         const filePath = fileUri.fsPath;
         const currentStatus = await this._fileStatusService.getFileStatus(fileUri);
         
@@ -305,6 +426,9 @@ export class EmbeddingService {
      * Поиск похожих файлов по запросу
      */
     async searchSimilar(query: string, limit: number = 5): Promise<any[]> {
+        // Проверяем и инициализируем сервис при необходимости
+        await this._ensureInitialized();
+
         const config = await this._llmService.getConfig();
         ConfigValidator.validateEmbeddingConfig(config);
         

@@ -96,7 +96,7 @@ export class CustomEmbeddingProvider implements EmbeddingProvider {
         if (!config.baseUrl && !config.localUrl) {
             throw new ConfigError('baseUrl или localUrl должны быть указаны в настройках');
         }
-        const baseUrl = config.baseUrl || config.localUrl!;
+        const baseUrlRaw = config.baseUrl || config.localUrl!;
         if (!config.embedderModel) {
             throw new ConfigError('Модель эмбеддинга не указана в настройках');
         }
@@ -104,7 +104,20 @@ export class CustomEmbeddingProvider implements EmbeddingProvider {
         const apiKey = config.apiKey || ConfigReader.getApiKeyNotNeeded();
         const timeout = ConfigValidator.validateTimeout(config.timeout);
         
-        const url = `${baseUrl}/v1/embeddings`;
+        // Убираем завершающий слэш, если есть
+        const baseUrl = baseUrlRaw.replace(/\/+$/, '');
+        
+        // Проверяем, содержит ли baseUrl уже /v1
+        let url: string;
+        if (baseUrl.endsWith('/v1')) {
+            // Если baseUrl уже содержит /v1, не добавляем его снова
+            url = `${baseUrl}/embeddings`;
+        } else {
+            // Если baseUrl не содержит /v1, добавляем его
+            url = `${baseUrl}/v1/embeddings`;
+        }
+        
+        Logger.debug(`[CustomEmbeddingProvider] Формирование URL: baseUrlRaw=${baseUrlRaw}, baseUrl=${baseUrl}, finalUrl=${url}`);
 
         const fetch = (await import('node-fetch')).default;
 
@@ -139,14 +152,23 @@ export class CustomEmbeddingProvider implements EmbeddingProvider {
 
             const data = await response.json();
             
+            Logger.debug(`[CustomEmbeddingProvider] Ответ API: ${JSON.stringify(data).substring(0, 200)}...`);
+            
+            // Проверяем формат OpenAI (data.data[0].embedding)
             if (data.data && data.data[0] && Array.isArray(data.data[0].embedding)) {
+                Logger.debug(`[CustomEmbeddingProvider] Найден формат OpenAI: data.data[0].embedding, размерность: ${data.data[0].embedding.length}`);
                 return data.data[0].embedding;
             }
             
+            // Проверяем альтернативный формат (data.embedding)
             if (data.embedding && Array.isArray(data.embedding)) {
+                Logger.debug(`[CustomEmbeddingProvider] Найден альтернативный формат: data.embedding, размерность: ${data.embedding.length}`);
                 return data.embedding;
             }
             
+            // Логируем структуру ответа для отладки
+            Logger.error(`[CustomEmbeddingProvider] Неверный формат ответа. Структура данных: ${JSON.stringify(Object.keys(data))}`);
+            Logger.error(`[CustomEmbeddingProvider] Полный ответ: ${JSON.stringify(data).substring(0, 500)}`);
             throw new Error('Кастомный провайдер вернул неверный формат эмбеддинга');
         } catch (error) {
             Logger.error('Ошибка получения эмбеддинга через кастомный провайдер', error as Error, { url, model });

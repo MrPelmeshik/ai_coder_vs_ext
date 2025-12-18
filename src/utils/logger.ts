@@ -83,8 +83,26 @@ export class Logger {
         
         const logLine = `[${timestamp}] [${level}] ${formattedMessage}`;
         
+        // Всегда выводим в консоль для отладки (даже если outputChannel не инициализирован)
+        try {
+            console.log(logLine);
+        } catch (e) {
+            // Игнорируем ошибки консоли
+        }
+        
         if (this.outputChannel) {
-            this.outputChannel.appendLine(logLine);
+            try {
+                this.outputChannel.appendLine(logLine);
+            } catch (e) {
+                console.error(`[Logger] Ошибка записи в outputChannel: ${e}`);
+            }
+        } else {
+            // Если outputChannel не инициализирован, выводим предупреждение в консоль
+            try {
+                console.warn(`[Logger] outputChannel не инициализирован! Логирование только в консоль: ${logLine}`);
+            } catch (e) {
+                // Игнорируем ошибки консоли
+            }
         }
     }
 

@@ -6,6 +6,7 @@ import { OllamaProvider } from '../providers/ollamaProvider';
 import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
 import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage } from '../types/messages';
 import { CONFIG_KEYS } from '../constants';
+import { Logger } from '../utils/logger';
 
 /**
  * Класс для управления Webview панелью AI Coder
@@ -342,11 +343,16 @@ export class AICoderPanel {
      * Обработка команды векторизации всех файлов
      */
     private async _handleVectorizeAll() {
+        Logger.info('[AICoderPanel] Начало обработки команды векторизации');
+        
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
+            Logger.error('[AICoderPanel] Не открыта рабочая область');
             vscode.window.showErrorMessage('Не открыта рабочая область');
             return;
         }
+
+        Logger.info(`[AICoderPanel] Рабочая область: ${workspaceFolder.uri.fsPath}`);
 
         // Запрашиваем подтверждение
         const action = await vscode.window.showWarningMessage(
@@ -357,8 +363,11 @@ export class AICoderPanel {
         );
 
         if (action !== 'Да') {
+            Logger.info('[AICoderPanel] Пользователь отменил векторизацию');
             return;
         }
+
+        Logger.info('[AICoderPanel] Пользователь подтвердил векторизацию, запуск процесса...');
 
         // Показываем прогресс
         vscode.window.withProgress({
@@ -367,13 +376,16 @@ export class AICoderPanel {
             cancellable: true
         }, async (progress, token) => {
             progress.report({ increment: 0, message: "Начало векторизации..." });
+            Logger.info('[AICoderPanel] Прогресс-бар создан, вызов vectorizeAllUnprocessed...');
 
             try {
                 let lastProcessed = 0;
                 let lastErrors = 0;
 
+                Logger.info('[AICoderPanel] Вызов embeddingService.vectorizeAllUnprocessed...');
                 // Запускаем векторизацию
                 const result = await this._embeddingService.vectorizeAllUnprocessed(workspaceFolder);
+                Logger.info(`[AICoderPanel] vectorizeAllUnprocessed завершен: processed=${result.processed}, errors=${result.errors}`);
 
                 progress.report({ increment: 100, message: "Готово!" });
 
@@ -386,11 +398,17 @@ export class AICoderPanel {
                     }
                 });
 
+                Logger.info(`[AICoderPanel] Показ сообщения пользователю: Обработано: ${result.processed}, Ошибок: ${result.errors}`);
                 vscode.window.showInformationMessage(
                     `Векторизация завершена. Обработано: ${result.processed}, Ошибок: ${result.errors}`
                 );
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+                const errorStack = error instanceof Error ? error.stack : undefined;
+                Logger.error(`[AICoderPanel] Ошибка при векторизации: ${errorMessage}`, error as Error);
+                if (errorStack) {
+                    Logger.error(`[AICoderPanel] Стек ошибки: ${errorStack}`, error as Error);
+                }
                 vscode.window.showErrorMessage(`Ошибка векторизации: ${errorMessage}`);
                 
                 this._panel.webview.postMessage({

@@ -33,11 +33,14 @@ export class DirectoryVectorizer {
             enableVsSummarize: boolean;
         }
     ): Promise<{ processed: number; errors: number }> {
+        Logger.info(`[DirectoryVectorizer] Начало векторизации директории: ${dirPath}`);
+        
         const dirUri = vscode.Uri.file(dirPath);
         const currentStatus = await this.fileStatusService.getFileStatus(dirUri);
         
         // Пропускаем исключенные директории
         if (currentStatus === FileStatus.EXCLUDED) {
+            Logger.info(`[DirectoryVectorizer] Директория ${dirPath} исключена из обработки, пропускаем`);
             return { processed: 0, errors: 0 };
         }
 
@@ -82,9 +85,10 @@ export class DirectoryVectorizer {
         // Помечаем директорию как обрабатывается
         this.fileStatusService.setFileStatus(dirUri, FileStatus.PROCESSING);
 
+        let processedCount = 0;
+        let errorCount = 0;
+
         try {
-            let processedCount = 0;
-            let errorCount = 0;
 
             // Создаем запись для директории (origin)
             if (needsOrigin) {
@@ -146,12 +150,14 @@ export class DirectoryVectorizer {
             return { processed: processedCount, errors: errorCount };
         } catch (error) {
             this.fileStatusService.clearProcessingStatus(dirUri);
-            Logger.error(`Ошибка векторизации директории ${dirPath}`, error as Error);
-            throw new VectorizationError(
-                `Не удалось векторизовать директорию ${dirPath}`,
-                dirPath,
-                error as Error
-            );
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            Logger.error(`Критическая ошибка векторизации директории ${dirPath}: ${errorMessage}`, error as Error);
+            if (errorStack) {
+                Logger.error(`Стек ошибки: ${errorStack}`, error as Error);
+            }
+            // Не выбрасываем исключение, а возвращаем ошибку, чтобы обработка других элементов продолжалась
+            return { processed: processedCount, errors: errorCount + 1 };
         }
     }
 
@@ -159,25 +165,40 @@ export class DirectoryVectorizer {
      * Создание вектора origin для директории
      */
     private async _createOriginVector(dirPath: string, parentId: string | null): Promise<void> {
-        const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        const fileNames = files.filter(f => f.isFile()).map(f => f.name);
-        const description = `Директория содержит ${fileNames.length} файлов: ${fileNames.join(', ')}`;
-        
-        const llmConfig = await this._getLLMConfig();
-        const vector = await this.embeddingProvider.getEmbedding(description, llmConfig);
-        
-        const dirItem: EmbeddingItem = {
-            id: generateGuid(),
-            type: 'directory',
-            parent: parentId,
-            childs: [],
-            path: dirPath,
-            kind: 'origin',
-            raw: { description, files: fileNames },
-            vector: vector
-        };
+        try {
+            const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            const fileNames = files.filter(f => f.isFile()).map(f => f.name);
+            const description = `Директория содержит ${fileNames.length} файлов: ${fileNames.join(', ')}`;
+            
+            const llmConfig = await this._getLLMConfig();
+            Logger.debug(`[DirectoryVectorizer] Получение эмбеддинга для директории ${dirPath}, модель: ${llmConfig.embedderModel}, провайдер: ${llmConfig.provider}`);
+            
+            const vector = await this.embeddingProvider.getEmbedding(description, llmConfig);
+            
+            if (!vector || !Array.isArray(vector) || vector.length === 0) {
+                throw new Error('Провайдер вернул пустой или неверный вектор');
+            }
+            
+            Logger.debug(`[DirectoryVectorizer] Получен вектор размерности ${vector.length} для директории ${dirPath}`);
+            
+            const dirItem: EmbeddingItem = {
+                id: generateGuid(),
+                type: 'directory',
+                parent: parentId,
+                childs: [],
+                path: dirPath,
+                kind: 'origin',
+                raw: { description, files: fileNames },
+                vector: vector
+            };
 
-        await this.storage.addEmbedding(dirItem);
+            await this.storage.addEmbedding(dirItem);
+            Logger.debug(`[DirectoryVectorizer] Вектор успешно сохранен в хранилище для директории ${dirPath}`);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            Logger.error(`[DirectoryVectorizer] Ошибка в _createOriginVector для директории ${dirPath}: ${errorMessage}`, error as Error);
+            throw error;
+        }
     }
 
     /**
