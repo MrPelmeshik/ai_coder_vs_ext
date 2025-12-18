@@ -674,12 +674,15 @@ export class AICoderPanel {
     private async _handleGetServers() {
         try {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+            Logger.info(`Отправка списка серверов в webview, количество: ${servers.length}`);
+            Logger.info(`Детали серверов:`, servers.map(s => ({ id: s.id, name: s.name, active: s.active })));
             this._panel.webview.postMessage({
                 command: 'serversList',
                 servers: servers
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
+            Logger.error('Ошибка получения списка серверов', error as Error);
             this._panel.webview.postMessage({
                 command: 'serversList',
                 servers: [],
@@ -748,11 +751,23 @@ export class AICoderPanel {
             await this._context.workspaceState.update('llmServers', servers);
             
             Logger.info(`Сервер успешно добавлен, ID: ${newServer.id}`);
+            Logger.info(`Всего серверов в хранилище: ${servers.length}`);
             
+            // Отправляем сообщение о добавлении сервера
             this._panel.webview.postMessage({
                 command: 'serverAdded',
                 server: newServer
             });
+            
+            // Также отправляем обновленный список серверов с небольшой задержкой
+            // чтобы компонент успел обработать serverAdded и обновить UI
+            setTimeout(() => {
+                Logger.info(`Отправка обновленного списка серверов, количество: ${servers.length}`);
+                this._panel.webview.postMessage({
+                    command: 'serversList',
+                    servers: servers
+                });
+            }, 50);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             Logger.error('Ошибка добавления сервера', error as Error);
@@ -784,10 +799,19 @@ export class AICoderPanel {
             
             await this._context.workspaceState.update('llmServers', servers);
             
+            // Отправляем сообщение об обновлении сервера
             this._panel.webview.postMessage({
                 command: 'serverUpdated',
                 server: servers[serverIndex]
             });
+            
+            // Также отправляем обновленный список серверов с небольшой задержкой
+            setTimeout(() => {
+                this._panel.webview.postMessage({
+                    command: 'serversList',
+                    servers: servers
+                });
+            }, 50);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             this._panel.webview.postMessage({
@@ -806,10 +830,19 @@ export class AICoderPanel {
             const filteredServers = servers.filter(s => s.id !== serverId);
             await this._context.workspaceState.update('llmServers', filteredServers);
             
+            // Отправляем сообщение об удалении сервера
             this._panel.webview.postMessage({
                 command: 'serverDeleted',
                 serverId: serverId
             });
+            
+            // Также отправляем обновленный список серверов с небольшой задержкой
+            setTimeout(() => {
+                this._panel.webview.postMessage({
+                    command: 'serversList',
+                    servers: filteredServers
+                });
+            }, 50);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             this._panel.webview.postMessage({
@@ -1263,11 +1296,55 @@ export class AICoderPanel {
      */
     private _getHtmlForWebview(webview: vscode.Webview) {
         // Получение URI для ресурсов
-        const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js')
-        );
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css')
+        );
+        
+        // URI для утилит
+        const messageBusUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'utils', 'MessageBus.js')
+        );
+        const domUtilsUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'utils', 'domUtils.js')
+        );
+        
+        // URI для UI компонентов
+        const buttonUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Button.js')
+        );
+        const selectUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Select.js')
+        );
+        const inputUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Input.js')
+        );
+        const modalUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Modal.js')
+        );
+        const tabsUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Tabs.js')
+        );
+        const statusMessageUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'StatusMessage.js')
+        );
+        
+        // URI для функциональных компонентов
+        const codeGenerationUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'CodeGenerationComponent.js')
+        );
+        const searchUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'SearchComponent.js')
+        );
+        const settingsUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'SettingsComponent.js')
+        );
+        const serverManagementUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'ServerManagementComponent.js')
+        );
+        
+        // Главный скрипт
+        const mainScriptUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js')
         );
 
         // Используем nonce для безопасности
@@ -1519,7 +1596,23 @@ export class AICoderPanel {
                         </div>
                     </div>
                 </div>
-                <script nonce="${nonce}" src="${scriptUri}"></script>
+                <!-- Утилиты -->
+                <script nonce="${nonce}" src="${domUtilsUri}"></script>
+                <script nonce="${nonce}" src="${messageBusUri}"></script>
+                <!-- UI компоненты -->
+                <script nonce="${nonce}" src="${buttonUri}"></script>
+                <script nonce="${nonce}" src="${selectUri}"></script>
+                <script nonce="${nonce}" src="${inputUri}"></script>
+                <script nonce="${nonce}" src="${modalUri}"></script>
+                <script nonce="${nonce}" src="${tabsUri}"></script>
+                <script nonce="${nonce}" src="${statusMessageUri}"></script>
+                <!-- Функциональные компоненты -->
+                <script nonce="${nonce}" src="${codeGenerationUri}"></script>
+                <script nonce="${nonce}" src="${searchUri}"></script>
+                <script nonce="${nonce}" src="${settingsUri}"></script>
+                <script nonce="${nonce}" src="${serverManagementUri}"></script>
+                <!-- Главный скрипт -->
+                <script nonce="${nonce}" src="${mainScriptUri}"></script>
             </body>
             </html>`;
     }
