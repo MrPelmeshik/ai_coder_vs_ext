@@ -4,7 +4,7 @@ import { LLMService } from './services/llmService';
 import { FileStatusService, FileStatus } from './services/fileStatusService';
 import { FileDecorationProvider } from './providers/fileDecorationProvider';
 import { EmbeddingService } from './services/embedding/embeddingService';
-import { LanceDbStorage } from './storage/implementations/lanceDbStorage';
+import { FileVectorStorage } from './storage/implementations/fileVectorStorage';
 import { Logger } from './utils/logger';
 
 let llmService: LLMService | undefined;
@@ -27,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
     fileStatusService = new FileStatusService(context);
 
     // Инициализация хранилища
-    const storage = new LanceDbStorage(context);
+    const storage = new FileVectorStorage(context);
 
     // Инициализация сервиса эмбеддингов (с Dependency Injection)
     embeddingService = new EmbeddingService(context, llmService, fileStatusService, storage);
@@ -42,21 +42,21 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Отслеживание изменений файлов для автоматического сброса статуса
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*');
-    
+
     fileWatcher.onDidChange(async (uri) => {
         // При изменении файла удаляем его из БД и сбрасываем статус
         if (embeddingService && fileStatusService) {
             try {
                 const storage = embeddingService.getStorage();
                 const filePath = uri.fsPath;
-                
+
                 // Проверяем, не исключен ли файл
                 const status = await fileStatusService.getFileStatus(uri);
                 if (status === FileStatus.EXCLUDED) {
                     // Исключенные файлы не обрабатываем
                     return;
                 }
-                
+
                 // Удаляем все записи файла из БД
                 const existingItems = await storage.getByPath(filePath);
                 if (existingItems.length > 0) {
@@ -72,7 +72,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
-    
+
     context.subscriptions.push(fileWatcher);
 
     // Регистрация команды для открытия панели

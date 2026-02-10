@@ -16,12 +16,13 @@ export class LanceDbStorage implements VectorStorage {
     private table: any; // LanceDB table
     private storagePath: string;
     private initialized: boolean = false;
+    private initPromise: Promise<void> | null = null; // Кэш промиса инициализации для предотвращения race condition
     private vectorDimension: number | null = null; // Размерность вектора (определяется динамически)
 
     constructor(context: vscode.ExtensionContext) {
         // Используем globalStorageUri для хранения данных расширения
         this.storagePath = path.join(context.globalStorageUri.fsPath, 'lancedb');
-        
+
         // Создаем директорию если не существует
         try {
             if (!fs.existsSync(this.storagePath)) {
@@ -40,24 +41,44 @@ export class LanceDbStorage implements VectorStorage {
             return;
         }
 
+        // Если инициализация уже запущена, ждём её завершения
+        // Это предотвращает race condition при параллельных вызовах
+        if (this.initPromise) {
+            return this.initPromise;
+        }
+
+        this.initPromise = this._doInitialize();
+        try {
+            await this.initPromise;
+        } catch (error) {
+            // Сбрасываем промис при ошибке, чтобы можно было повторить попытку
+            this.initPromise = null;
+            throw error;
+        }
+    }
+
+    /**
+     * Внутренняя логика инициализации
+     */
+    private async _doInitialize(): Promise<void> {
         try {
             // Динамический импорт @lancedb/lancedb (может быть не установлен)
             const lancedb = await import('@lancedb/lancedb');
-            
+
             // Подключение к БД
             this.db = await lancedb.connect(this.storagePath);
 
             // Проверяем существование таблицы
             const tableNames = await this.db.tableNames();
-            
+
             if (tableNames.includes(TABLE_NAMES.EMBEDDING_ITEM)) {
                 try {
                     // Открываем существующую таблицу
                     this.table = await this.db.openTable(TABLE_NAMES.EMBEDDING_ITEM);
-                    
+
                     // Определяем размерность вектора из существующей таблицы
                     await this._detectVectorDimension();
-                    
+
                     // Проверяем и создаем индекс если нужно
                     await this._ensureIndex();
                 } catch (error) {
@@ -67,20 +88,22 @@ export class LanceDbStorage implements VectorStorage {
                     // Продолжаем создание новой таблицы
                 }
             }
-            
+
             if (!this.table) {
                 // Таблица будет создана при первом добавлении эмбеддинга
                 // Размерность вектора определится автоматически
-                
+
             }
 
             this.initialized = true;
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            Logger.error(`Детали ошибки инициализации хранилища: ${errorMessage}`, error as Error);
             // Если @lancedb/lancedb не установлен, выбрасываем понятную ошибку
             if (error instanceof Error && error.message.includes('Cannot find module')) {
                 throw new StorageError('LanceDB не установлен. Выполните: npm install @lancedb/lancedb', error);
             }
-            throw new StorageError('Ошибка инициализации хранилища', error as Error);
+            throw new StorageError(`Ошибка инициализации хранилища: ${errorMessage}`, error as Error);
         }
     }
 
@@ -92,13 +115,13 @@ export class LanceDbStorage implements VectorStorage {
 
         // Преобразуем данные для LanceDB
         // Вектор должен быть массивом чисел (Float32Array или number[])
-        const vector = Array.isArray(item.vector) 
-            ? item.vector 
+        const vector = Array.isArray(item.vector)
+            ? item.vector
             : Array.from(item.vector);
 
         // Проверяем размерность вектора
         const vectorDim = vector.length;
-        
+
         // Если таблица еще не создана, создаем её с нужной размерностью
         if (!this.table) {
             await this._createTableWithDimension(vectorDim);
@@ -107,7 +130,7 @@ export class LanceDbStorage implements VectorStorage {
             if (this.vectorDimension === null) {
                 await this._detectVectorDimension();
             }
-            
+
             if (this.vectorDimension !== null && this.vectorDimension !== vectorDim) {
                 throw new StorageError(
                     `Несоответствие размерности вектора: ожидается ${this.vectorDimension}, получено ${vectorDim}. ` +
@@ -130,15 +153,15 @@ export class LanceDbStorage implements VectorStorage {
 
         // Добавляем запись
         await this.table.add([data]);
-        
+
         // Сохраняем размерность вектора
         if (this.vectorDimension === null) {
             this.vectorDimension = vectorDim;
         }
-        
+
         // Проверяем, нужно ли создать индекс (создаем после добавления определенного количества записей)
         await this._ensureIndex();
-        
+
         return item.id;
     }
 
@@ -164,21 +187,21 @@ export class LanceDbStorage implements VectorStorage {
         try {
             // Проверяем количество записей в таблице
             const count = await this.table.countRows();
-            
+
             // Создаем индекс если есть достаточно записей
             // Обновляем индекс каждые UPDATE_INTERVAL новых записей или при первом создании
             // Это снижает нагрузку при больших объемах данных (тысячи/миллионы векторов)
             if (count >= VECTOR_INDEX.MIN_RECORDS && (count - this.lastIndexCount >= VECTOR_INDEX.UPDATE_INTERVAL || this.lastIndexCount === 0)) {
                 this.indexCreationInProgress = true;
-                
+
                 try {
                     const { Index } = await import('@lancedb/lancedb');
-                    
+
                     // Вычисляем оптимальное количество разделов для разных объемов данных
                     // ВАЖНО: Это НЕ ограничивает количество хранимых векторов!
                     // Можно хранить миллионы векторов - индекс только ускоряет поиск
                     let numPartitions: number;
-                    
+
                     if (count < 10000) {
                         // Для средних объемов (512-10K): адаптивное количество партиций
                         numPartitions = Math.min(256, Math.max(64, Math.floor(Math.sqrt(count))));
@@ -190,18 +213,18 @@ export class LanceDbStorage implements VectorStorage {
                         // Это обеспечивает лучшую производительность при поиске в миллионах векторов
                         numPartitions = VECTOR_INDEX.MAX_PARTITIONS;
                     }
-                    
+
                     // КРИТИЧНО: numPartitions НЕ должен превышать количество векторов
                     // Это требование алгоритма KMeans
                     numPartitions = Math.min(numPartitions, count);
-                    
+
                     // sampleRate: количество векторов для обучения KMeans
                     // Для больших объемов используем больше данных для обучения
                     const sampleRate = Math.max(numPartitions, Math.min(VECTOR_INDEX.SAMPLE_RATE_MAX, count));
-                    
+
                     // numSubVectors: количество подвекторов для Product Quantization
                     const numSubVectors = VECTOR_INDEX.SUB_VECTORS;
-                    
+
                     // Создаем IVF-PQ индекс для векторной колонки
                     await this.table.createIndex('vector', {
                         config: Index.ivfPq({
@@ -213,7 +236,7 @@ export class LanceDbStorage implements VectorStorage {
                         }),
                         replace: true // Заменяем существующий индекс если есть
                     });
-                    
+
                     this.lastIndexCount = count;
                     Logger.info(
                         `Векторный индекс создан/обновлен для таблицы embedding_item`,
@@ -257,7 +280,7 @@ export class LanceDbStorage implements VectorStorage {
         if (this.vectorDimension === null) {
             throw new StorageError('Не удалось определить размерность векторов в базе данных.');
         }
-        
+
         if (this.vectorDimension !== queryDim) {
             throw new StorageError(
                 `Несоответствие размерности вектора: в базе данных векторы размерности ${this.vectorDimension}, ` +
@@ -332,7 +355,7 @@ export class LanceDbStorage implements VectorStorage {
             const results = await this.table.query()
                 .where(`path = '${filePath.replace(/'/g, "''")}'`) // Экранируем одинарные кавычки
                 .toArray();
-            
+
             return results.map((item: any) => this._deserializeItem(item));
         } catch (error) {
             Logger.error('Ошибка получения по пути', error as Error);
@@ -355,13 +378,13 @@ export class LanceDbStorage implements VectorStorage {
             // Используем query для поиска дочерних элементов
             // Если parentId null, ищем записи с пустым parent
             const parentIdValue = parentId || '';
-            const whereClause = parentIdValue 
+            const whereClause = parentIdValue
                 ? `parent = '${parentIdValue.replace(/'/g, "''")}'`
                 : `parent = '' OR parent IS NULL`;
             const results = await this.table.query()
                 .where(whereClause)
                 .toArray();
-            
+
             return results.map((item: any) => this._deserializeItem(item));
         } catch (error) {
             Logger.error('Ошибка получения дочерних элементов', error as Error);
@@ -455,13 +478,13 @@ export class LanceDbStorage implements VectorStorage {
 
         try {
             let query = this.table.query();
-            
+
             if (limit && limit > 0) {
                 query = query.limit(limit);
             }
-            
+
             const results = await query.toArray();
-            
+
             return results.map((item: any) => this._deserializeItem(item));
         } catch (error) {
             Logger.error('Ошибка получения всех записей', error as Error);
@@ -505,7 +528,7 @@ export class LanceDbStorage implements VectorStorage {
 
             // Получаем размер директории хранилища
             let totalSize = 0;
-            
+
             const calculateDirSize = (dirPath: string): number => {
                 let size = 0;
                 try {
@@ -540,24 +563,42 @@ export class LanceDbStorage implements VectorStorage {
      * Очистка всех данных из хранилища
      */
     async clear(): Promise<void> {
-        await this.ensureInitialized();
-
         try {
-            // Удаляем таблицу если она существует
-            if (this.table) {
-                const tableNames = await this.db.tableNames();
-                if (tableNames.includes(TABLE_NAMES.EMBEDDING_ITEM)) {
-                    await this.db.dropTable(TABLE_NAMES.EMBEDDING_ITEM);
-                    Logger.info('Таблица embedding_item удалена');
+            // Пытаемся инициализировать для корректного удаления через LanceDB API
+            try {
+                await this.ensureInitialized();
+            } catch (initError) {
+                Logger.warn('Не удалось инициализировать хранилище для очистки, используем fallback', initError as Error);
+            }
+
+            // Удаляем таблицу если она существует и БД доступна
+            if (this.db && this.table) {
+                try {
+                    const tableNames = await this.db.tableNames();
+                    if (tableNames.includes(TABLE_NAMES.EMBEDDING_ITEM)) {
+                        await this.db.dropTable(TABLE_NAMES.EMBEDDING_ITEM);
+                        Logger.info('Таблица embedding_item удалена через LanceDB API');
+                    }
+                } catch (dbError) {
+                    Logger.warn('Не удалось удалить таблицу через API, будет удалена директория', dbError as Error);
                 }
+            }
+
+            // Fallback: удаляем директорию хранилища напрямую
+            if (fs.existsSync(this.storagePath)) {
+                fs.rmSync(this.storagePath, { recursive: true, force: true });
+                fs.mkdirSync(this.storagePath, { recursive: true });
+                Logger.info('Директория хранилища очищена');
             }
 
             // Сбрасываем состояние
             this.table = null;
+            this.db = null;
             this.vectorDimension = null;
             this.initialized = false;
+            this.initPromise = null;
             this.lastIndexCount = 0;
-            
+
             Logger.info('Хранилище эмбеддингов очищено');
         } catch (error) {
             Logger.error('Ошибка очистки хранилища', error as Error);
@@ -571,6 +612,7 @@ export class LanceDbStorage implements VectorStorage {
     async dispose(): Promise<void> {
         // LanceDB автоматически сохраняет данные
         this.initialized = false;
+        this.initPromise = null;
         this.table = null;
         this.db = null;
     }
@@ -589,7 +631,7 @@ export class LanceDbStorage implements VectorStorage {
      */
     private async _createTableWithDimension(vectorDim: number): Promise<void> {
         const { Field, Schema, Utf8, FixedSizeList, Float32 } = await import('apache-arrow');
-        
+
         // Определяем схему таблицы
         const schema = new Schema([
             new Field('id', new Utf8(), false),
@@ -601,7 +643,7 @@ export class LanceDbStorage implements VectorStorage {
             new Field('raw', new Utf8(), false),
             new Field('vector', new FixedSizeList(vectorDim, new Field('item', new Float32(), false)), false)
         ]);
-        
+
         const initialData = [{
             id: '00000000-0000-0000-0000-000000000000',
             type: 'file',
@@ -618,13 +660,13 @@ export class LanceDbStorage implements VectorStorage {
             mode: 'create', // Создаем новую таблицу
             schema: schema
         });
-        
+
         // Удаляем заглушку
         await this.table.delete('id = \'00000000-0000-0000-0000-000000000000\'');
-        
+
         // Сохраняем размерность
         this.vectorDimension = vectorDim;
-        
+
         Logger.info(`Таблица embedding_item создана с размерностью вектора: ${vectorDim}`);
     }
 
@@ -641,7 +683,7 @@ export class LanceDbStorage implements VectorStorage {
             const results = await this.table.query()
                 .limit(1)
                 .toArray();
-            
+
             if (results.length > 0 && results[0].vector) {
                 const vector = results[0].vector;
                 // Вектор может быть массивом или Arrow Vector
@@ -657,7 +699,7 @@ export class LanceDbStorage implements VectorStorage {
                         this.vectorDimension = vectorField.type.listSize;
                     }
                 }
-                
+
                 if (this.vectorDimension) {
                     Logger.debug(`Размерность вектора определена: ${this.vectorDimension}`);
                 }
@@ -693,14 +735,14 @@ export class LanceDbStorage implements VectorStorage {
             vector = data.vector;
         } else if (data.vector) {
             const vectorObj = data.vector as any;
-            
+
             // Пытаемся преобразовать Arrow Vector в массив
             try {
                 // Проверяем, есть ли метод toArray (Arrow Vector)
                 if (typeof vectorObj.toArray === 'function') {
                     const tempVector = vectorObj.toArray();
                     vector = Array.isArray(tempVector) ? tempVector : Array.from(tempVector);
-                } 
+                }
                 // Проверяем, можно ли использовать Array.from (для итерируемых объектов)
                 else if (vectorObj.length !== undefined) {
                     try {
@@ -762,16 +804,16 @@ export class LanceDbStorage implements VectorStorage {
                 Logger.error(`[LanceDbStorage] Ошибка преобразования вектора для ${data.path} (${data.kind})`, error as Error);
             }
         }
-        
+
         // Убеждаемся, что вектор является обычным массивом (не TypedArray)
         if (vector && vector.length > 0 && !Array.isArray(vector)) {
             vector = Array.from(vector as any);
         }
-        
+
         if (vector.length === 0 && data.vector) {
             Logger.warn(`[LanceDbStorage] Вектор для ${data.path} (${data.kind}) пустой после преобразования`);
         }
-        
+
         return {
             id: data.id,
             type: data.type,

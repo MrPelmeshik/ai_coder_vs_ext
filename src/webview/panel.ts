@@ -4,7 +4,7 @@ import { LLMService } from '../services/llmService';
 import { EmbeddingService } from '../services/embedding/embeddingService';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
-import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage, ShowNotificationMessage, RequestCloseSettingsMessage } from '../types/messages';
+import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage, ShowNotificationMessage, RequestCloseSettingsMessage, VectorizeAllMessage } from '../types/messages';
 import { CONFIG_KEYS } from '../constants';
 import { Logger } from '../utils/logger';
 
@@ -227,17 +227,17 @@ export class AICoderPanel {
         try {
             const config = await this._llmService.getConfig();
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-            
+
             // Получаем значения с использованием дефолтных значений из package.json
             // VS Code Configuration API автоматически возвращает дефолтные значения,
             // если пользовательские значения не установлены
-            const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) || 
+            const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) ||
                 'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.';
             const enableOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN) ?? true;
             const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false;
             const enableVsOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN) ?? true;
             const enableVsSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE) ?? true;
-            
+
             // Не отправляем API ключ в webview по соображениям безопасности
             const safeConfig = {
                 ...config,
@@ -250,7 +250,7 @@ export class AICoderPanel {
                 enableVsOrigin: enableVsOrigin,
                 enableVsSummarize: enableVsSummarize
             };
-            
+
             this._panel.webview.postMessage({
                 command: 'config',
                 config: safeConfig
@@ -268,7 +268,7 @@ export class AICoderPanel {
                     apiKey: config.apiKey ? '***' : '',
                     hasApiKey: await this._llmService.hasApiKey(),
                     localUrl: config.localUrl || '',
-                    summarizePrompt: vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) || 
+                    summarizePrompt: vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) ||
                         'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.',
                     enableOrigin: vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN) ?? true,
                     enableSummarize: vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false,
@@ -291,14 +291,14 @@ export class AICoderPanel {
     private async _handleUpdateConfig(config: any) {
         try {
             await this._llmService.updateConfig(config);
-            
+
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-            
+
             // Сохраняем промпт суммаризации отдельно
             if (config.summarizePrompt !== undefined) {
                 await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT, config.summarizePrompt, vscode.ConfigurationTarget.Global);
             }
-            
+
             // Сохраняем настройки включения/отключения типов векторов
             if (config.enableOrigin !== undefined) {
                 await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN, config.enableOrigin, vscode.ConfigurationTarget.Global);
@@ -312,7 +312,7 @@ export class AICoderPanel {
             if (config.enableVsSummarize !== undefined) {
                 await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE, config.enableVsSummarize, vscode.ConfigurationTarget.Global);
             }
-            
+
             await this._sendConfigToWebview();
             vscode.window.showInformationMessage('Настройки успешно сохранены');
             // Явно отправляем сообщение об успешном сохранении для восстановления кнопки
@@ -363,7 +363,7 @@ export class AICoderPanel {
     private async _handleResetConfig() {
         try {
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-            
+
             // Сбрасываем все настройки LLM к значениям по умолчанию
             // Используем undefined для удаления пользовательских значений,
             // что вернет дефолтные значения из package.json
@@ -377,17 +377,17 @@ export class AICoderPanel {
             await vscodeConfig.update(CONFIG_KEYS.LLM.LOCAL_URL, undefined, vscode.ConfigurationTarget.Global);
             await vscodeConfig.update(CONFIG_KEYS.LLM.TIMEOUT, undefined, vscode.ConfigurationTarget.Global);
             await vscodeConfig.update(CONFIG_KEYS.LLM.SYSTEM_PROMPT, undefined, vscode.ConfigurationTarget.Global);
-            
+
             // Сбрасываем настройки векторизации
             await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT, undefined, vscode.ConfigurationTarget.Global);
             await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN, undefined, vscode.ConfigurationTarget.Global);
             await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE, undefined, vscode.ConfigurationTarget.Global);
             await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN, undefined, vscode.ConfigurationTarget.Global);
             await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE, undefined, vscode.ConfigurationTarget.Global);
-            
+
             // Очищаем API ключ из SecretStorage
             await this._llmService.setApiKey('');
-            
+
             // Отправляем обновленную конфигурацию в webview
             await this._sendConfigToWebview();
             vscode.window.showInformationMessage('Настройки сброшены к значениям по умолчанию');
@@ -439,7 +439,7 @@ export class AICoderPanel {
         // Сохраняем конфигурацию из сообщения перед векторизацией
         if (vectorizeMessage) {
             const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-            
+
             // Сохраняем настройки векторизации
             if (vectorizeMessage.enableOrigin !== undefined) {
                 await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN, vectorizeMessage.enableOrigin, vscode.ConfigurationTarget.Global);
@@ -456,17 +456,44 @@ export class AICoderPanel {
             if (vectorizeMessage.summarizePrompt !== undefined) {
                 await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT, vectorizeMessage.summarizePrompt, vscode.ConfigurationTarget.Global);
             }
-            
+
             // Обновляем конфигурацию модели эмбеддинга и суммаризации, если они переданы
             if (vectorizeMessage.embedderModel) {
                 const currentConfig = await this._llmService.getConfig();
-                await this._llmService.updateConfig({
+
+                // Получаем реальное API-имя модели из списка серверов
+                // modelName из webview содержит displayName, а для API нужен model.name
+                let apiModelName = vectorizeMessage.embedderModel.modelName;
+                const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
+                const server = servers.find(s => s.id === vectorizeMessage.embedderModel!.serverId);
+                if (server?.models) {
+                    const model = server.models.find(m =>
+                        m.id === vectorizeMessage.embedderModel!.modelId ||
+                        m.name === vectorizeMessage.embedderModel!.modelName
+                    );
+                    if (model) {
+                        apiModelName = model.name; // Используем реальное API-имя модели
+                        Logger.info(`[AICoderPanel] Модель эмбеддинга: displayName="${model.displayName || model.name}", apiName="${model.name}"`);
+                    }
+                }
+
+                const updateData: Partial<typeof currentConfig> = {
                     ...currentConfig,
-                    embedderModel: vectorizeMessage.embedderModel.modelName
-                });
+                    embedderModel: apiModelName
+                };
+                // Используем URL сервера из настроек модели эмбеддинга
+                if (vectorizeMessage.embedderModel.url) {
+                    updateData.localUrl = vectorizeMessage.embedderModel.url;
+                    updateData.baseUrl = vectorizeMessage.embedderModel.url;
+                    Logger.info(`[AICoderPanel] Используем URL сервера эмбеддингов: ${vectorizeMessage.embedderModel.url}`);
+                }
+                if (vectorizeMessage.embedderModel.apiKey) {
+                    updateData.apiKey = vectorizeMessage.embedderModel.apiKey;
+                }
+                await this._llmService.updateConfig(updateData);
             }
         }
-        
+
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
             Logger.error('[AICoderPanel] Не открыта рабочая область');
@@ -512,7 +539,7 @@ export class AICoderPanel {
                 vscode.window.showInformationMessage(
                     `Векторизация завершена. Обработано: ${result.processed}, Ошибок: ${result.errors}`
                 );
-                
+
                 // Обновляем размер хранилища после векторизации
                 this._handleGetStorageCount();
             } catch (error) {
@@ -523,7 +550,7 @@ export class AICoderPanel {
                     Logger.error(`[AICoderPanel] Стек ошибки: ${errorStack}`, error as Error);
                 }
                 vscode.window.showErrorMessage(`Ошибка векторизации: ${errorMessage}`);
-                
+
                 this._panel.webview.postMessage({
                     command: 'vectorizationError',
                     error: errorMessage
@@ -556,9 +583,9 @@ export class AICoderPanel {
 
             try {
                 const results = await this._embeddingService.searchSimilar(query, limit);
-                
+
                 progress.report({ increment: 100, message: "Готово!" });
-                
+
                 // Отправка результата обратно в webview
                 this._panel.webview.postMessage({
                     command: 'searchResults',
@@ -573,7 +600,7 @@ export class AICoderPanel {
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
                 vscode.window.showErrorMessage(`Ошибка поиска: ${errorMessage}`);
-                
+
                 this._panel.webview.postMessage({
                     command: 'searchError',
                     error: errorMessage
@@ -588,7 +615,7 @@ export class AICoderPanel {
     private async _handleGetAllItems(limit?: number) {
         try {
             const results = await this._embeddingService.getAllItems(limit);
-            
+
             // Отправка результата обратно в webview
             this._panel.webview.postMessage({
                 command: 'searchResults',
@@ -603,7 +630,7 @@ export class AICoderPanel {
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             vscode.window.showErrorMessage(`Ошибка загрузки записей: ${errorMessage}`);
-            
+
             this._panel.webview.postMessage({
                 command: 'searchError',
                 error: errorMessage
@@ -651,22 +678,22 @@ export class AICoderPanel {
 
             try {
                 await this._embeddingService.clearStorage();
-                
+
                 progress.report({ increment: 100, message: "Готово!" });
-                
+
                 // Отправка результата обратно в webview
                 this._panel.webview.postMessage({
                     command: 'storageCleared'
                 });
 
                 vscode.window.showInformationMessage('Хранилище эмбеддингов успешно очищено');
-                
+
                 // Обновляем размер хранилища после очистки
                 this._handleGetStorageCount();
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
                 vscode.window.showErrorMessage(`Ошибка очистки хранилища: ${errorMessage}`);
-                
+
                 this._panel.webview.postMessage({
                     command: 'storageClearError',
                     error: errorMessage
@@ -684,7 +711,7 @@ export class AICoderPanel {
                 this._embeddingService.getStorageCount(),
                 this._embeddingService.getStorageSize()
             ]);
-            
+
             // Отправка результата обратно в webview
             this._panel.webview.postMessage({
                 command: 'storageCount',
@@ -693,7 +720,7 @@ export class AICoderPanel {
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            
+
             this._panel.webview.postMessage({
                 command: 'storageCountError',
                 error: errorMessage
@@ -731,7 +758,7 @@ export class AICoderPanel {
         try {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const activeModels: Array<{ serverId: string; serverName: string; modelId: string; modelName: string; url: string; apiKey?: string; temperature?: number; maxTokens?: number; systemPrompt?: string }> = [];
-            
+
             servers.forEach(server => {
                 if (server.active !== false && server.models) {
                     server.models.forEach(model => {
@@ -751,7 +778,7 @@ export class AICoderPanel {
                     });
                 }
             });
-            
+
             this._panel.webview.postMessage({
                 command: 'activeModelsList',
                 models: activeModels
@@ -772,18 +799,18 @@ export class AICoderPanel {
         try {
             Logger.info(`Добавление сервера: ${serverData.name}, URL: ${serverData.url}`);
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            
+
             // Проверка уникальности имени сервера
             const trimmedName = serverData.name.trim();
             if (!trimmedName) {
                 throw new Error('Имя сервера не может быть пустым');
             }
-            
+
             const existingServer = servers.find(s => s.name.trim().toLowerCase() === trimmedName.toLowerCase());
             if (existingServer) {
                 throw new Error(`Сервер с именем "${trimmedName}" уже существует`);
             }
-            
+
             const newServer: LLMServer = {
                 id: `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 name: trimmedName,
@@ -794,16 +821,16 @@ export class AICoderPanel {
             };
             servers.push(newServer);
             await this._context.workspaceState.update('llmServers', servers);
-            
+
             Logger.info(`Сервер успешно добавлен, ID: ${newServer.id}`);
             Logger.info(`Всего серверов в хранилище: ${servers.length}`);
-            
+
             // Отправляем сообщение о добавлении сервера
             this._panel.webview.postMessage({
                 command: 'serverAdded',
                 server: newServer
             });
-            
+
             // Также отправляем обновленный список серверов с небольшой задержкой
             // чтобы компонент успел обработать serverAdded и обновить UI
             setTimeout(() => {
@@ -832,37 +859,37 @@ export class AICoderPanel {
         try {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const serverIndex = servers.findIndex(s => s.id === serverId);
-            
+
             if (serverIndex === -1) {
                 throw new Error('Сервер не найден');
             }
-            
+
             // Проверка уникальности имени сервера (исключая текущий сервер)
             const trimmedName = serverData.name.trim();
             if (!trimmedName) {
                 throw new Error('Имя сервера не может быть пустым');
             }
-            
+
             const existingServer = servers.find(s => s.id !== serverId && s.name.trim().toLowerCase() === trimmedName.toLowerCase());
             if (existingServer) {
                 throw new Error(`Сервер с именем "${trimmedName}" уже существует`);
             }
-            
+
             servers[serverIndex] = {
                 ...servers[serverIndex],
                 name: trimmedName,
                 url: serverData.url,
                 apiKey: serverData.apiKey
             };
-            
+
             await this._context.workspaceState.update('llmServers', servers);
-            
+
             // Отправляем сообщение об обновлении сервера
             this._panel.webview.postMessage({
                 command: 'serverUpdated',
                 server: servers[serverIndex]
             });
-            
+
             // Также отправляем обновленный список серверов с небольшой задержкой
             setTimeout(() => {
                 this._panel.webview.postMessage({
@@ -889,13 +916,13 @@ export class AICoderPanel {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const filteredServers = servers.filter(s => s.id !== serverId);
             await this._context.workspaceState.update('llmServers', filteredServers);
-            
+
             // Отправляем сообщение об удалении сервера
             this._panel.webview.postMessage({
                 command: 'serverDeleted',
                 serverId: serverId
             });
-            
+
             // Также отправляем обновленный список серверов с небольшой задержкой
             setTimeout(() => {
                 this._panel.webview.postMessage({
@@ -921,7 +948,7 @@ export class AICoderPanel {
         try {
             const provider = new OpenAiCompatibleProvider();
             const available = await provider.checkAvailability(url);
-            
+
             this._panel.webview.postMessage({
                 command: 'serverCheckResult',
                 serverId: serverId,
@@ -944,7 +971,7 @@ export class AICoderPanel {
         try {
             const provider = new OpenAiCompatibleProvider();
             const models = await provider.listModels(url, apiKey);
-            
+
             this._panel.webview.postMessage({
                 command: 'availableModelsList',
                 serverId: serverId,
@@ -959,7 +986,7 @@ export class AICoderPanel {
             });
         }
     }
-    
+
     /**
      * Получение списка моделей с сервера (для обратной совместимости)
      */
@@ -967,17 +994,17 @@ export class AICoderPanel {
         try {
             const provider = new OpenAiCompatibleProvider();
             const models = await provider.listModels(url, apiKey);
-            
+
             // Загружаем сохраненные настройки моделей для этого сервера
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const serverIndex = servers.findIndex(s => s.id === serverId);
-            
+
             if (serverIndex === -1) {
                 throw new Error('Сервер не найден');
             }
-            
+
             const savedModels = servers[serverIndex].models || [];
-            
+
             // Объединяем полученные модели с сохраненными настройками
             const modelsWithSettings: ServerModel[] = models.map((modelName, index) => {
                 const savedModel = savedModels.find(m => m.name === modelName);
@@ -987,17 +1014,17 @@ export class AICoderPanel {
                     active: true // По умолчанию модель активна
                 };
             });
-            
+
             // Обновляем сервер с новыми моделями
             servers[serverIndex].models = modelsWithSettings;
             await this._context.workspaceState.update('llmServers', servers);
-            
+
             this._panel.webview.postMessage({
                 command: 'serverModelsList',
                 serverId: serverId,
                 models: modelsWithSettings
             });
-            
+
             // Отправляем обновленный список активных моделей
             this._handleGetActiveModels();
         } catch (error) {
@@ -1009,7 +1036,7 @@ export class AICoderPanel {
             });
         }
     }
-    
+
     /**
      * Добавление модели к серверу
      */
@@ -1017,22 +1044,22 @@ export class AICoderPanel {
         try {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const serverIndex = servers.findIndex(s => s.id === serverId);
-            
+
             if (serverIndex === -1) {
                 throw new Error('Сервер не найден');
             }
-            
+
             if (!servers[serverIndex].models) {
                 servers[serverIndex].models = [];
             }
-            
+
             // Проверка обязательности и уникальности названия модели
             // displayName теперь обязателен
             if (!model.displayName || !model.displayName.trim()) {
                 throw new Error('Пользовательское наименование модели обязательно для заполнения');
             }
             const modelDisplayName = model.displayName.trim();
-            
+
             // Проверяем уникальность среди всех моделей всех серверов
             // Сравниваем displayName (displayName теперь всегда задан)
             for (const server of servers) {
@@ -1047,7 +1074,7 @@ export class AICoderPanel {
                     }
                 }
             }
-            
+
             // Создаем новую модель с уникальным ID (разрешаем добавлять одну и ту же модель несколько раз)
             const newModel: ServerModel = {
                 id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -1058,16 +1085,16 @@ export class AICoderPanel {
                 systemPrompt: model.systemPrompt,
                 active: model.active !== false
             };
-            
+
             servers[serverIndex].models!.push(newModel);
             await this._context.workspaceState.update('llmServers', servers);
-            
+
             this._panel.webview.postMessage({
                 command: 'serverModelAdded',
                 serverId: serverId,
                 model: newModel
             });
-            
+
             // Отправляем обновленный список серверов
             setTimeout(() => {
                 this._panel.webview.postMessage({
@@ -1094,24 +1121,24 @@ export class AICoderPanel {
         try {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const serverIndex = servers.findIndex(s => s.id === serverId);
-            
+
             if (serverIndex === -1) {
                 throw new Error('Сервер не найден');
             }
-            
+
             if (!servers[serverIndex].models) {
                 servers[serverIndex].models = [];
             }
-            
+
             const modelIndex = servers[serverIndex].models!.findIndex(m => m.id === model.id || m.name === model.name);
-            
+
             // Проверка обязательности и уникальности названия модели
             // displayName теперь обязателен
             if (!model.displayName || !model.displayName.trim()) {
                 throw new Error('Пользовательское наименование модели обязательно для заполнения');
             }
             const modelDisplayName = model.displayName.trim();
-            
+
             // Проверяем уникальность среди всех моделей всех серверов (исключая текущую модель)
             // Сравниваем displayName с displayName (displayName теперь всегда задан)
             for (const server of servers) {
@@ -1129,7 +1156,7 @@ export class AICoderPanel {
                     }
                 }
             }
-            
+
             if (modelIndex === -1) {
                 // Добавляем новую модель
                 if (!model.id) {
@@ -1149,15 +1176,15 @@ export class AICoderPanel {
                     displayName: modelDisplayName
                 };
             }
-            
+
             await this._context.workspaceState.update('llmServers', servers);
-            
+
             this._panel.webview.postMessage({
                 command: 'serverModelUpdated',
                 serverId: serverId,
                 model: model
             });
-            
+
             // Отправляем обновленный список активных моделей
             this._handleGetActiveModels();
         } catch (error) {
@@ -1177,20 +1204,20 @@ export class AICoderPanel {
         try {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const serverIndex = servers.findIndex(s => s.id === serverId);
-            
+
             if (serverIndex === -1) {
                 throw new Error('Сервер не найден');
             }
-            
+
             servers[serverIndex].active = active;
             await this._context.workspaceState.update('llmServers', servers);
-            
+
             this._panel.webview.postMessage({
                 command: 'serverActiveToggled',
                 serverId: serverId,
                 active: active
             });
-            
+
             // Отправляем обновленный список активных моделей
             this._handleGetActiveModels();
         } catch (error) {
@@ -1210,31 +1237,31 @@ export class AICoderPanel {
         try {
             const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
             const serverIndex = servers.findIndex(s => s.id === serverId);
-            
+
             if (serverIndex === -1) {
                 throw new Error('Сервер не найден');
             }
-            
+
             if (!servers[serverIndex].models) {
                 throw new Error('Модели не найдены');
             }
-            
+
             const modelIndex = servers[serverIndex].models!.findIndex(m => m.id === modelId || m.name === modelId);
-            
+
             if (modelIndex === -1) {
                 throw new Error('Модель не найдена');
             }
-            
+
             servers[serverIndex].models![modelIndex].active = active;
             await this._context.workspaceState.update('llmServers', servers);
-            
+
             this._panel.webview.postMessage({
                 command: 'modelActiveToggled',
                 serverId: serverId,
                 modelId: modelId,
                 active: active
             });
-            
+
             // Отправляем обновленный список активных моделей
             this._handleGetActiveModels();
         } catch (error) {
@@ -1312,11 +1339,11 @@ export class AICoderPanel {
                 let fullResponse = '';
                 let thinkingContent = '';
                 let answerContent = '';
-                
+
                 // Маркеры для разделения размышлений и ответа
                 const thinkingStartMarkers = ['<think>', '<think>', '```thinking', 'thinking:', 'размышление:'];
                 const thinkingEndMarkers = ['</think>', '</think>', '```', 'answer:', 'ответ:'];
-                
+
                 let inThinkingBlock = false;
                 let thinkingStartPos = -1;
                 let thinkingEndPos = -1;
@@ -1343,99 +1370,99 @@ export class AICoderPanel {
 
                 // Используем streaming генерацию с кастомной конфигурацией
                 const provider = new OpenAiCompatibleProvider();
-                
+
                 // Используем streaming если доступен, иначе обычную генерацию
                 if (provider.stream) {
                     for await (const chunk of provider.stream(text, config)) {
                         fullResponse += chunk;
-                    
-                    // Проверяем начало блока размышлений
-                    if (!inThinkingBlock) {
-                        for (const marker of thinkingStartMarkers) {
-                            // Ищем маркер без учета регистра, но используем реальную позицию
-                            const lowerResponse = fullResponse.toLowerCase();
-                            const lowerMarker = marker.toLowerCase();
-                            const pos = lowerResponse.indexOf(lowerMarker);
-                            if (pos !== -1) {
-                                inThinkingBlock = true;
-                                thinkingStartMarker = marker;
-                                // Пропускаем сам маркер - начинаем после него
-                                // Используем реальную длину маркера из оригинального текста
-                                const actualMarker = fullResponse.substring(pos, pos + marker.length);
-                                thinkingStartPos = pos + actualMarker.length;
-                                break;
+
+                        // Проверяем начало блока размышлений
+                        if (!inThinkingBlock) {
+                            for (const marker of thinkingStartMarkers) {
+                                // Ищем маркер без учета регистра, но используем реальную позицию
+                                const lowerResponse = fullResponse.toLowerCase();
+                                const lowerMarker = marker.toLowerCase();
+                                const pos = lowerResponse.indexOf(lowerMarker);
+                                if (pos !== -1) {
+                                    inThinkingBlock = true;
+                                    thinkingStartMarker = marker;
+                                    // Пропускаем сам маркер - начинаем после него
+                                    // Используем реальную длину маркера из оригинального текста
+                                    const actualMarker = fullResponse.substring(pos, pos + marker.length);
+                                    thinkingStartPos = pos + actualMarker.length;
+                                    break;
+                                }
                             }
                         }
-                    }
-                    
-                    // Если мы в блоке размышлений, ищем конец
-                    if (inThinkingBlock && thinkingEndPos === -1) {
-                        for (const marker of thinkingEndMarkers) {
-                            // Ищем маркер без учета регистра, но используем реальную позицию
-                            const lowerResponse = fullResponse.toLowerCase();
-                            const lowerMarker = marker.toLowerCase();
-                            const pos = lowerResponse.indexOf(lowerMarker, thinkingStartPos);
-                            if (pos !== -1) {
-                                // Нашли конец размышлений
-                                thinkingEndPos = pos;
-                                thinkingEndMarker = marker;
-                                // Используем реальную длину маркера из оригинального текста
-                                const actualMarker = fullResponse.substring(pos, pos + marker.length);
-                                // Извлекаем содержимое между тегами (без самих тегов)
-                                thinkingContent = fullResponse.substring(thinkingStartPos, thinkingEndPos).trim();
-                                // Ответ начинается после закрывающего тега
-                                answerContent = fullResponse.substring(thinkingEndPos + actualMarker.length).trim();
-                                inThinkingBlock = false;
-                                break;
+
+                        // Если мы в блоке размышлений, ищем конец
+                        if (inThinkingBlock && thinkingEndPos === -1) {
+                            for (const marker of thinkingEndMarkers) {
+                                // Ищем маркер без учета регистра, но используем реальную позицию
+                                const lowerResponse = fullResponse.toLowerCase();
+                                const lowerMarker = marker.toLowerCase();
+                                const pos = lowerResponse.indexOf(lowerMarker, thinkingStartPos);
+                                if (pos !== -1) {
+                                    // Нашли конец размышлений
+                                    thinkingEndPos = pos;
+                                    thinkingEndMarker = marker;
+                                    // Используем реальную длину маркера из оригинального текста
+                                    const actualMarker = fullResponse.substring(pos, pos + marker.length);
+                                    // Извлекаем содержимое между тегами (без самих тегов)
+                                    thinkingContent = fullResponse.substring(thinkingStartPos, thinkingEndPos).trim();
+                                    // Ответ начинается после закрывающего тега
+                                    answerContent = fullResponse.substring(thinkingEndPos + actualMarker.length).trim();
+                                    inThinkingBlock = false;
+                                    break;
+                                }
                             }
                         }
-                    }
-                    
-                    // Отправляем обновление в реальном времени
-                    if (inThinkingBlock && thinkingEndPos === -1) {
-                        // Пока в блоке размышлений, показываем накопленный текст как размышления (без открывающего тега)
-                        const currentThinking = fullResponse.substring(thinkingStartPos);
-                        // Удаляем возможные закрывающие теги из размышлений
-                        let cleanThinking = currentThinking;
-                        for (const marker of thinkingEndMarkers) {
-                            const lowerThinking = cleanThinking.toLowerCase();
-                            const lowerMarker = marker.toLowerCase();
-                            const markerPos = lowerThinking.indexOf(lowerMarker);
-                            if (markerPos !== -1) {
-                                // Удаляем тег и все после него из размышлений
-                                cleanThinking = cleanThinking.substring(0, markerPos).trim();
+
+                        // Отправляем обновление в реальном времени
+                        if (inThinkingBlock && thinkingEndPos === -1) {
+                            // Пока в блоке размышлений, показываем накопленный текст как размышления (без открывающего тега)
+                            const currentThinking = fullResponse.substring(thinkingStartPos);
+                            // Удаляем возможные закрывающие теги из размышлений
+                            let cleanThinking = currentThinking;
+                            for (const marker of thinkingEndMarkers) {
+                                const lowerThinking = cleanThinking.toLowerCase();
+                                const lowerMarker = marker.toLowerCase();
+                                const markerPos = lowerThinking.indexOf(lowerMarker);
+                                if (markerPos !== -1) {
+                                    // Удаляем тег и все после него из размышлений
+                                    cleanThinking = cleanThinking.substring(0, markerPos).trim();
+                                }
                             }
+                            thinkingContent = cleanThinking;
+
+                            this._panel.webview.postMessage({
+                                command: 'streamChunk',
+                                thinking: thinkingContent,
+                                answer: '',
+                                isThinking: true
+                            });
+                        } else if (thinkingEndPos !== -1) {
+                            // После конца размышлений показываем ответ (без закрывающего тега)
+                            answerContent = fullResponse.substring(thinkingEndPos + thinkingEndMarker.length).trim();
+
+                            this._panel.webview.postMessage({
+                                command: 'streamChunk',
+                                thinking: thinkingContent,
+                                answer: answerContent,
+                                isThinking: false
+                            });
+                        } else {
+                            // Если нет блока размышлений, весь текст показываем как размышления в реальном времени
+                            // А в конце весь текст будет итоговым ответом
+                            thinkingContent = fullResponse;
+
+                            this._panel.webview.postMessage({
+                                command: 'streamChunk',
+                                thinking: thinkingContent,
+                                answer: '',
+                                isThinking: true
+                            });
                         }
-                        thinkingContent = cleanThinking;
-                        
-                        this._panel.webview.postMessage({
-                            command: 'streamChunk',
-                            thinking: thinkingContent,
-                            answer: '',
-                            isThinking: true
-                        });
-                    } else if (thinkingEndPos !== -1) {
-                        // После конца размышлений показываем ответ (без закрывающего тега)
-                        answerContent = fullResponse.substring(thinkingEndPos + thinkingEndMarker.length).trim();
-                        
-                        this._panel.webview.postMessage({
-                            command: 'streamChunk',
-                            thinking: thinkingContent,
-                            answer: answerContent,
-                            isThinking: false
-                        });
-                    } else {
-                        // Если нет блока размышлений, весь текст показываем как размышления в реальном времени
-                        // А в конце весь текст будет итоговым ответом
-                        thinkingContent = fullResponse;
-                        
-                        this._panel.webview.postMessage({
-                            command: 'streamChunk',
-                            thinking: thinkingContent,
-                            answer: '',
-                            isThinking: true
-                        });
-                    }
                     }
                 } else {
                     // Если streaming не поддерживается, используем обычную генерацию
@@ -1475,7 +1502,7 @@ export class AICoderPanel {
                 }
 
                 progress.report({ increment: 100, message: "Готово!" });
-                
+
                 // Отправка финального результата
                 this._panel.webview.postMessage({
                     command: 'generationComplete',
@@ -1487,7 +1514,7 @@ export class AICoderPanel {
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
                 vscode.window.showErrorMessage(`Ошибка генерации: ${errorMessage}`);
-                
+
                 this._panel.webview.postMessage({
                     command: 'error',
                     error: errorMessage
@@ -1504,7 +1531,7 @@ export class AICoderPanel {
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css')
         );
-        
+
         // URI для утилит
         const messageBusUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'utils', 'MessageBus.js')
@@ -1512,7 +1539,7 @@ export class AICoderPanel {
         const domUtilsUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'utils', 'domUtils.js')
         );
-        
+
         // URI для UI компонентов
         const buttonUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Button.js')
@@ -1532,7 +1559,7 @@ export class AICoderPanel {
         const statusMessageUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'StatusMessage.js')
         );
-        
+
         // URI для функциональных компонентов
         const codeGenerationUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'CodeGenerationComponent.js')
@@ -1546,7 +1573,7 @@ export class AICoderPanel {
         const serverManagementUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'ServerManagementComponent.js')
         );
-        
+
         // Главный скрипт
         const mainScriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js')

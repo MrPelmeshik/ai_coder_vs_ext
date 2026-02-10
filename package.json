@@ -322,7 +322,6 @@
     "typescript": "^4.9.4"
   },
   "dependencies": {
-    "@lancedb/lancedb": "^0.5.2",
     "node-fetch": "^2.7.0"
   }
 }

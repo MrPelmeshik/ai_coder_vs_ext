@@ -23,7 +23,8 @@ export class EmbeddingService {
     private _context: vscode.ExtensionContext;
     private _isProcessing: boolean = false;
     private _isInitialized: boolean = false;
-    
+    private _initPromise: Promise<void> | null = null; // Кэш промиса инициализации
+
     private _embeddingProvider: any;
     private _textSummarizer: TextSummarizer;
     private _fileVectorizer!: FileVectorizer;
@@ -39,10 +40,10 @@ export class EmbeddingService {
         this._llmService = llmService;
         this._fileStatusService = fileStatusService;
         this._storage = storage;
-        
+
         // Передаем хранилище в FileStatusService для проверки реального состояния
         this._fileStatusService.setStorage(this._storage);
-        
+
         // Инициализируем компоненты (провайдер будет создан при первом использовании)
         this._textSummarizer = new TextSummarizer(llmService);
     }
@@ -51,13 +52,35 @@ export class EmbeddingService {
      * Инициализация сервиса
      */
     async initialize(): Promise<void> {
+        if (this._isInitialized) {
+            return;
+        }
+
+        // Если инициализация уже запущена, ждём её завершения
+        if (this._initPromise) {
+            return this._initPromise;
+        }
+
+        this._initPromise = this._doInitialize();
+        try {
+            await this._initPromise;
+        } catch (error) {
+            this._initPromise = null;
+            throw error;
+        }
+    }
+
+    /**
+     * Внутренняя логика инициализации
+     */
+    private async _doInitialize(): Promise<void> {
         await this._storage.initialize();
         this._fileStatusService.setStorage(this._storage);
-        
+
         // Создаем провайдер эмбеддингов
         const config = await this._llmService.getConfig();
         this._embeddingProvider = EmbeddingProviderFactory.create(config);
-        
+
         // Инициализируем векторизаторы
         this._fileVectorizer = new FileVectorizer(
             this._embeddingProvider,
@@ -66,14 +89,14 @@ export class EmbeddingService {
             this._fileStatusService,
             this._llmService
         );
-        
+
         this._directoryVectorizer = new DirectoryVectorizer(
             this._embeddingProvider,
             this._storage,
             this._fileStatusService,
             this._llmService
         );
-        
+
         this._isInitialized = true;
     }
 
@@ -82,7 +105,7 @@ export class EmbeddingService {
      */
     private async _ensureInitialized(): Promise<void> {
         Logger.debug(`[EmbeddingService] Проверка инициализации: _isInitialized=${this._isInitialized}, _embeddingProvider=${!!this._embeddingProvider}, _fileVectorizer=${!!this._fileVectorizer}, _directoryVectorizer=${!!this._directoryVectorizer}`);
-        
+
         if (!this._isInitialized || !this._embeddingProvider || !this._fileVectorizer || !this._directoryVectorizer) {
             try {
                 await this.initialize();
@@ -131,10 +154,10 @@ export class EmbeddingService {
             }
 
             const rootPath = folder.uri.fsPath;
-            
+
             // Получаем конфигурацию для модели эмбеддинга
             const config = await this._llmService.getConfig();
-            
+
             ConfigValidator.validateEmbeddingConfig(config);
 
             // Получаем настройки векторизации
@@ -144,7 +167,7 @@ export class EmbeddingService {
             const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false;
             const enableVsOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN) ?? true;
             const enableVsSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE) ?? true;
-            const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) || 
+            const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) ||
                 'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.';
             const vectorizationConfig = {
                 embedderModel: config.embedderModel!,
@@ -154,7 +177,7 @@ export class EmbeddingService {
                 enableVsSummarize,
                 summarizePrompt
             };
-            
+
             // Собираем все элементы с их глубиной вложенности
             const itemsToProcess: Array<{
                 path: string;
@@ -169,13 +192,19 @@ export class EmbeddingService {
             // Сортируем по глубине: сначала самые глубокие (максимальная вложенность)
             itemsToProcess.sort((a, b) => b.depth - a.depth);
 
+            // Проверяем доступность сервера эмбеддингов перед началом обработки
+            await this._checkEmbeddingServerConnectivity(config);
+
             // Обрабатываем элементы в порядке от максимальной вложенности к корню
             Logger.info(`[EmbeddingService] Начинаем обработку ${itemsToProcess.length} элементов`);
-            
+
+            let consecutiveConnectionErrors = 0;
+            const MAX_CONSECUTIVE_CONNECTION_ERRORS = 3;
+
             for (let i = 0; i < itemsToProcess.length; i++) {
                 const item = itemsToProcess[i];
                 Logger.info(`[EmbeddingService] [${i + 1}/${itemsToProcess.length}] Обработка ${item.type}: ${item.path} (глубина: ${item.depth})`);
-                
+
                 try {
                     // Пропускаем корневую директорию
                     if (item.type === 'directory' && item.depth === 0) {
@@ -220,6 +249,8 @@ export class EmbeddingService {
                         processed += result.processed;
                         errors += result.errors;
                     }
+                    // Сброс счётчика последовательных ошибок при успехе
+                    consecutiveConnectionErrors = 0;
                 } catch (error) {
                     errors++;
                     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -227,6 +258,18 @@ export class EmbeddingService {
                     Logger.error(`Ошибка обработки ${item.type} ${item.path}: ${errorMessage}`, error as Error);
                     if (errorStack) {
                         Logger.error(`Стек ошибки для ${item.path}: ${errorStack}`, error as Error);
+                    }
+
+                    // Проверяем, является ли ошибка проблемой подключения
+                    if (this._isConnectionError(error)) {
+                        consecutiveConnectionErrors++;
+                        if (consecutiveConnectionErrors >= MAX_CONSECUTIVE_CONNECTION_ERRORS) {
+                            Logger.error(`[EmbeddingService] Сервер эмбеддингов недоступен после ${MAX_CONSECUTIVE_CONNECTION_ERRORS} последовательных ошибок подключения. Прерываем обработку.`);
+                            errors += (itemsToProcess.length - i - 1); // Считаем оставшиеся как ошибки
+                            break;
+                        }
+                    } else {
+                        consecutiveConnectionErrors = 0;
                     }
                 }
             }
@@ -247,6 +290,66 @@ export class EmbeddingService {
     }
 
     /**
+     * Проверка, является ли ошибка проблемой сетевого подключения
+     */
+    private _isConnectionError(error: unknown): boolean {
+        if (!error) return false;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const connectionIndicators = [
+            'ECONNREFUSED',
+            'ECONNRESET',
+            'ETIMEDOUT',
+            'ENOTFOUND',
+            'fetch failed',
+            'request to',
+            'network error',
+            'FetchError',
+        ];
+        return connectionIndicators.some(indicator =>
+            errorMessage.toLowerCase().includes(indicator.toLowerCase())
+        );
+    }
+
+    /**
+     * Проверка доступности сервера эмбеддингов перед началом векторизации
+     */
+    private async _checkEmbeddingServerConnectivity(config: any): Promise<void> {
+        const baseUrl = (config.baseUrl || config.localUrl || '').replace(/\/+$/, '');
+        if (!baseUrl) {
+            Logger.warn('[EmbeddingService] URL сервера эмбеддингов не указан, пропускаем проверку');
+            return;
+        }
+
+        const checkUrl = baseUrl.endsWith('/v1')
+            ? `${baseUrl}/models`
+            : `${baseUrl}/v1/models`;
+
+        Logger.info(`[EmbeddingService] Проверка доступности сервера эмбеддингов: ${checkUrl}`);
+
+        try {
+            const fetch = (await import('node-fetch')).default;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const response = await fetch(checkUrl, {
+                method: 'GET',
+                signal: controller.signal as any,
+            });
+
+            clearTimeout(timeoutId);
+            Logger.info(`[EmbeddingService] Сервер эмбеддингов доступен (статус: ${response.status})`);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            Logger.error(`[EmbeddingService] Сервер эмбеддингов недоступен по адресу ${baseUrl}: ${errorMessage}`);
+            throw new VectorizationError(
+                `Сервер эмбеддингов недоступен по адресу ${baseUrl}. ` +
+                `Убедитесь, что Ollama или LM Studio запущен и доступен. ` +
+                `Детали: ${errorMessage}`
+            );
+        }
+    }
+
+    /**
      * Рекурсивный сбор всех файлов и директорий с их глубиной вложенности
      */
     private async _collectItems(
@@ -259,10 +362,10 @@ export class EmbeddingService {
             Logger.debug(`[EmbeddingService] Сбор элементов из директории: ${dirPath} (глубина: ${depth})`);
             const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
             Logger.debug(`[EmbeddingService] Найдено записей в ${dirPath}: ${entries.length}`);
-            
+
             for (const entry of entries) {
                 const itemPath = path.normalize(path.join(dirPath, entry.name));
-                
+
                 if (entry.isFile()) {
                     items.push({
                         path: itemPath,
@@ -277,7 +380,7 @@ export class EmbeddingService {
                         Logger.debug(`[EmbeddingService] Пропущена служебная директория: ${itemPath}`);
                         continue;
                     }
-                    
+
                     // Добавляем директорию в список
                     items.push({
                         path: itemPath,
@@ -286,7 +389,7 @@ export class EmbeddingService {
                         parentPath: parentPath ? path.normalize(parentPath) : null
                     });
                     Logger.debug(`[EmbeddingService] Добавлена директория: ${itemPath}`);
-                    
+
                     // Рекурсивно собираем элементы из поддиректории
                     await this._collectItems(itemPath, itemPath, depth + 1, items);
                 }
@@ -306,19 +409,19 @@ export class EmbeddingService {
 
         const filePath = fileUri.fsPath;
         const currentStatus = await this._fileStatusService.getFileStatus(fileUri);
-        
+
         if (currentStatus === FileStatus.EXCLUDED) {
             throw new VectorizationError(`Файл ${filePath} исключен из обработки`);
         }
 
         const config = await this._llmService.getConfig();
         ConfigValidator.validateEmbeddingConfig(config);
-        
+
         const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
         // Используем дефолтные значения из package.json для консистентности с panel.ts
         const enableOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN) ?? true;
         const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false;
-        const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) || 
+        const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) ||
             'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.';
         const vectorizationConfig = {
             embedderModel: config.embedderModel!,
@@ -355,13 +458,13 @@ export class EmbeddingService {
 
         const config = await this._llmService.getConfig();
         ConfigValidator.validateEmbeddingConfig(config);
-        
+
         // Получаем эмбеддинг запроса
         const queryVector = await this._embeddingProvider.getEmbedding(query, config);
-        
+
         // Ищем похожие
         const results = await this._storage.searchSimilar(queryVector, limit);
-        
+
         return results.map(r => ({
             path: r.item.path,
             type: r.item.type,
@@ -376,7 +479,7 @@ export class EmbeddingService {
      */
     async getAllItems(limit?: number): Promise<any[]> {
         const items = await this._storage.getAllItems(limit);
-        
+
         return items.map(item => ({
             path: item.path,
             type: item.type,
