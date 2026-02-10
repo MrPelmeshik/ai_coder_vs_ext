@@ -1,41 +1,26 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { LLMService } from '../services/llmService';
 import { EmbeddingService } from '../services/embedding/embeddingService';
-import { OllamaProvider } from '../providers/ollamaProvider';
-import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
-import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage, ShowNotificationMessage, RequestCloseSettingsMessage, VectorizeAllMessage } from '../types/messages';
-import { CONFIG_KEYS, STORAGE_KEYS } from '../constants';
+import {
+    WebviewMessage, UpdateConfigMessage, CheckLocalServerMessage,
+    SearchMessage, GetAllItemsMessage, OpenFileMessage, ShowNotificationMessage,
+    RequestCloseSettingsMessage, VectorizeAllMessage
+} from '../types/messages';
 import { Logger } from '../utils/logger';
+import { PanelContext } from './panelContext';
+import { getHtmlForWebview } from './htmlGenerator';
+
+// Обработчики сообщений
+import { handleSendConfig, handleUpdateConfig, handleRequestResetConfig, handleRequestCloseSettings } from './handlers/configHandlers';
+import { handleGetServers, handleAddServer, handleUpdateServer, handleDeleteServer, handleCheckServer, handleCheckLocalServer, handleToggleServerActive } from './handlers/serverHandlers';
+import { handleGetActiveModels, handleGetAvailableModels, handleGetServerModels, handleAddServerModel, handleUpdateServerModel, handleToggleModelActive, handleSaveSelectedModels, handleGetSelectedModels } from './handlers/modelHandlers';
+import { handleVectorizeAll, handleSearch, handleGetAllItems, handleOpenFile, handleClearStorage, handleGetStorageCount } from './handlers/embeddingHandlers';
+import { handleGenerate } from './handlers/generationHandler';
 
 /**
- * Интерфейс для сервера LLM
- */
-interface LLMServer {
-    id: string;
-    name: string;
-    url: string;
-    apiKey?: string;
-    status?: 'available' | 'unavailable' | 'checking';
-    active?: boolean;
-    models?: ServerModel[];
-}
-
-/**
- * Интерфейс для модели сервера
- */
-interface ServerModel {
-    id: string;
-    name: string;
-    displayName?: string; // Пользовательское наименование для удобства выбора
-    temperature?: number;
-    maxTokens?: number;
-    systemPrompt?: string;
-    active?: boolean;
-}
-
-/**
- * Класс для управления Webview панелью AI Coder
+ * Класс для управления Webview панелью AI Coder.
+ * Отвечает за жизненный цикл панели и маршрутизацию сообщений
+ * к соответствующим обработчикам.
  */
 export class AICoderPanel {
     public static currentPanel: AICoderPanel | undefined;
@@ -43,143 +28,37 @@ export class AICoderPanel {
 
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
-    private readonly _llmService: LLMService;
-    private readonly _embeddingService: EmbeddingService;
-    private readonly _context: vscode.ExtensionContext;
+    private readonly _ctx: PanelContext;
     private _disposables: vscode.Disposable[] = [];
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService, context: vscode.ExtensionContext) {
+    private constructor(
+        panel: vscode.WebviewPanel,
+        extensionUri: vscode.Uri,
+        llmService: LLMService,
+        embeddingService: EmbeddingService,
+        context: vscode.ExtensionContext
+    ) {
         this._panel = panel;
         this._extensionUri = extensionUri;
-        this._llmService = llmService;
-        this._embeddingService = embeddingService;
-        this._context = context;
+
+        // Создаём контекст панели для передачи в обработчики
+        this._ctx = {
+            panel: this._panel,
+            extensionUri: this._extensionUri,
+            llmService,
+            embeddingService,
+            extensionContext: context
+        };
 
         // Установка начального содержимого webview
         this._update();
 
         // Отправка начальной конфигурации в webview
-        this._sendConfigToWebview();
+        handleSendConfig(this._ctx);
 
         // Обработка сообщений от webview
         this._panel.webview.onDidReceiveMessage(
-            (message: WebviewMessage) => {
-                switch (message.command) {
-                    case 'generate':
-                        const generateMsg = message as any;
-                        this._handleGenerate(generateMsg.text, generateMsg.model);
-                        return;
-                    case 'getConfig':
-                        this._sendConfigToWebview();
-                        return;
-                    case 'updateConfig':
-                        this._handleUpdateConfig((message as UpdateConfigMessage).config);
-                        return;
-                    case 'resetConfig':
-                        this._handleResetConfig();
-                        return;
-                    case 'requestResetConfig':
-                        this._handleRequestResetConfig();
-                        return;
-                    case 'checkLocalServer':
-                        const checkMsg = message as CheckLocalServerMessage;
-                        this._handleCheckLocalServer(checkMsg.url, checkMsg.provider);
-                        return;
-                    case 'alert':
-                        vscode.window.showInformationMessage((message as any).text);
-                        return;
-                    case 'showNotification':
-                        const notificationMsg = message as ShowNotificationMessage;
-                        if (notificationMsg.type === 'error') {
-                            vscode.window.showErrorMessage(notificationMsg.message);
-                        } else if (notificationMsg.type === 'warning') {
-                            vscode.window.showWarningMessage(notificationMsg.message);
-                        } else {
-                            vscode.window.showInformationMessage(notificationMsg.message);
-                        }
-                        return;
-                    case 'vectorizeAll':
-                        const vectorizeMsg = message as VectorizeAllMessage;
-                        this._handleVectorizeAll(vectorizeMsg);
-                        return;
-                    case 'search':
-                        const searchMsg = message as SearchMessage;
-                        this._handleSearch(searchMsg.query, searchMsg.limit);
-                        return;
-                    case 'getAllItems':
-                        this._handleGetAllItems((message as GetAllItemsMessage).limit);
-                        return;
-                    case 'openFile':
-                        this._handleOpenFile((message as OpenFileMessage).path);
-                        return;
-                    case 'clearStorage':
-                        this._handleClearStorage();
-                        return;
-                    case 'getStorageCount':
-                        this._handleGetStorageCount();
-                        return;
-                    case 'requestCloseSettings':
-                        const closeMsg = message as RequestCloseSettingsMessage;
-                        this._handleRequestCloseSettings(closeMsg.hasChanges);
-                        return;
-                    case 'getServers':
-                        this._handleGetServers();
-                        return;
-                    case 'getActiveModels':
-                        this._handleGetActiveModels();
-                        return;
-                    case 'addServer':
-                        const addServerMsg = message as any;
-                        Logger.info('Получена команда addServer', { server: addServerMsg.server });
-                        this._handleAddServer(addServerMsg.server).catch(error => {
-                            Logger.error('Ошибка в _handleAddServer', error as Error);
-                        });
-                        return;
-                    case 'deleteServer':
-                        const deleteServerMsg = message as any;
-                        this._handleDeleteServer(deleteServerMsg.serverId);
-                        return;
-                    case 'checkServer':
-                        const checkServerMsg = message as any;
-                        this._handleCheckServer(checkServerMsg.serverId, checkServerMsg.url, checkServerMsg.apiKey);
-                        return;
-                    case 'updateServer':
-                        const updateServerMsg = message as any;
-                        this._handleUpdateServer(updateServerMsg.serverId, updateServerMsg.server);
-                        return;
-                    case 'getServerModels':
-                        const getModelsMsg = message as any;
-                        this._handleGetServerModels(getModelsMsg.serverId, getModelsMsg.url, getModelsMsg.apiKey);
-                        return;
-                    case 'getAvailableModels':
-                        const getAvailableMsg = message as any;
-                        this._handleGetAvailableModels(getAvailableMsg.serverId, getAvailableMsg.url, getAvailableMsg.apiKey);
-                        return;
-                    case 'addServerModel':
-                        const addModelMsg = message as any;
-                        this._handleAddServerModel(addModelMsg.serverId, addModelMsg.model);
-                        return;
-                    case 'updateServerModel':
-                        const updateModelMsg = message as any;
-                        this._handleUpdateServerModel(updateModelMsg.serverId, updateModelMsg.model);
-                        return;
-                    case 'toggleServerActive':
-                        const toggleServerMsg = message as any;
-                        this._handleToggleServerActive(toggleServerMsg.serverId, toggleServerMsg.active);
-                        return;
-                    case 'toggleModelActive':
-                        const toggleModelMsg = message as any;
-                        this._handleToggleModelActive(toggleModelMsg.serverId, toggleModelMsg.modelId, toggleModelMsg.active);
-                        return;
-                    case 'saveSelectedModels':
-                        const saveModelsMsg = message as any;
-                        this._handleSaveSelectedModels(saveModelsMsg.selections);
-                        return;
-                    case 'getSelectedModels':
-                        this._handleGetSelectedModels();
-                        return;
-                }
-            },
+            (message: WebviewMessage) => this._routeMessage(message),
             null,
             this._disposables
         );
@@ -191,18 +70,21 @@ export class AICoderPanel {
     /**
      * Создание или показ существующей панели
      */
-    public static createOrShow(extensionUri: vscode.Uri, llmService: LLMService, embeddingService: EmbeddingService, context: vscode.ExtensionContext) {
+    public static createOrShow(
+        extensionUri: vscode.Uri,
+        llmService: LLMService,
+        embeddingService: EmbeddingService,
+        context: vscode.ExtensionContext
+    ) {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
 
-        // Если панель уже существует, показываем её
         if (AICoderPanel.currentPanel) {
             AICoderPanel.currentPanel._panel.reveal(column);
             return;
         }
 
-        // Создаём новую панель
         const panel = vscode.window.createWebviewPanel(
             AICoderPanel.viewType,
             'AI Coder',
@@ -220,1686 +102,149 @@ export class AICoderPanel {
     }
 
     /**
+     * Маршрутизация входящих сообщений от webview к соответствующим обработчикам
+     */
+    private _routeMessage(message: WebviewMessage): void {
+        switch (message.command) {
+            // --- Генерация ---
+            case 'generate': {
+                const msg = message as any;
+                handleGenerate(this._ctx, msg.text, msg.model);
+                return;
+            }
+
+            // --- Конфигурация ---
+            case 'getConfig':
+                handleSendConfig(this._ctx);
+                return;
+            case 'updateConfig':
+                handleUpdateConfig(this._ctx, (message as UpdateConfigMessage).config);
+                return;
+            case 'resetConfig':
+            case 'requestResetConfig':
+                handleRequestResetConfig(this._ctx);
+                return;
+            case 'requestCloseSettings':
+                handleRequestCloseSettings(this._ctx, (message as RequestCloseSettingsMessage).hasChanges);
+                return;
+
+            // --- Уведомления ---
+            case 'alert':
+                vscode.window.showInformationMessage((message as any).text);
+                return;
+            case 'showNotification': {
+                const notificationMsg = message as ShowNotificationMessage;
+                if (notificationMsg.type === 'error') {
+                    vscode.window.showErrorMessage(notificationMsg.message);
+                } else if (notificationMsg.type === 'warning') {
+                    vscode.window.showWarningMessage(notificationMsg.message);
+                } else {
+                    vscode.window.showInformationMessage(notificationMsg.message);
+                }
+                return;
+            }
+
+            // --- Серверы ---
+            case 'checkLocalServer': {
+                const checkMsg = message as CheckLocalServerMessage;
+                handleCheckLocalServer(this._ctx, checkMsg.url, checkMsg.provider);
+                return;
+            }
+            case 'getServers':
+                handleGetServers(this._ctx);
+                return;
+            case 'addServer': {
+                const addServerMsg = message as any;
+                Logger.info('Получена команда addServer', { server: addServerMsg.server });
+                handleAddServer(this._ctx, addServerMsg.server).catch(error => {
+                    Logger.error('Ошибка в handleAddServer', error as Error);
+                });
+                return;
+            }
+            case 'deleteServer':
+                handleDeleteServer(this._ctx, (message as any).serverId);
+                return;
+            case 'checkServer': {
+                const checkServerMsg = message as any;
+                handleCheckServer(this._ctx, checkServerMsg.serverId, checkServerMsg.url, checkServerMsg.apiKey);
+                return;
+            }
+            case 'updateServer': {
+                const updateServerMsg = message as any;
+                handleUpdateServer(this._ctx, updateServerMsg.serverId, updateServerMsg.server);
+                return;
+            }
+            case 'toggleServerActive': {
+                const toggleServerMsg = message as any;
+                handleToggleServerActive(this._ctx, toggleServerMsg.serverId, toggleServerMsg.active);
+                return;
+            }
+
+            // --- Модели ---
+            case 'getActiveModels':
+                handleGetActiveModels(this._ctx);
+                return;
+            case 'getServerModels': {
+                const getModelsMsg = message as any;
+                handleGetServerModels(this._ctx, getModelsMsg.serverId, getModelsMsg.url, getModelsMsg.apiKey);
+                return;
+            }
+            case 'getAvailableModels': {
+                const getAvailableMsg = message as any;
+                handleGetAvailableModels(this._ctx, getAvailableMsg.serverId, getAvailableMsg.url, getAvailableMsg.apiKey);
+                return;
+            }
+            case 'addServerModel': {
+                const addModelMsg = message as any;
+                handleAddServerModel(this._ctx, addModelMsg.serverId, addModelMsg.model);
+                return;
+            }
+            case 'updateServerModel': {
+                const updateModelMsg = message as any;
+                handleUpdateServerModel(this._ctx, updateModelMsg.serverId, updateModelMsg.model);
+                return;
+            }
+            case 'toggleModelActive': {
+                const toggleModelMsg = message as any;
+                handleToggleModelActive(this._ctx, toggleModelMsg.serverId, toggleModelMsg.modelId, toggleModelMsg.active);
+                return;
+            }
+            case 'saveSelectedModels':
+                handleSaveSelectedModels(this._ctx, (message as any).selections);
+                return;
+            case 'getSelectedModels':
+                handleGetSelectedModels(this._ctx);
+                return;
+
+            // --- Эмбеддинги / Поиск / Хранилище ---
+            case 'vectorizeAll':
+                handleVectorizeAll(this._ctx, message as VectorizeAllMessage);
+                return;
+            case 'search': {
+                const searchMsg = message as SearchMessage;
+                handleSearch(this._ctx, searchMsg.query, searchMsg.limit);
+                return;
+            }
+            case 'getAllItems':
+                handleGetAllItems(this._ctx, (message as GetAllItemsMessage).limit);
+                return;
+            case 'openFile':
+                handleOpenFile((message as OpenFileMessage).path);
+                return;
+            case 'clearStorage':
+                handleClearStorage(this._ctx);
+                return;
+            case 'getStorageCount':
+                handleGetStorageCount(this._ctx);
+                return;
+        }
+    }
+
+    /**
      * Обновление содержимого webview
      */
     private _update() {
-        const webview = this._panel.webview;
-        this._panel.webview.html = this._getHtmlForWebview(webview);
-    }
-
-    /**
-     * Отправка конфигурации в webview
-     */
-    private async _sendConfigToWebview() {
-        try {
-            const config = await this._llmService.getConfig();
-            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-
-            // Получаем значения с использованием дефолтных значений из package.json
-            // VS Code Configuration API автоматически возвращает дефолтные значения,
-            // если пользовательские значения не установлены
-            const summarizePrompt = vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) ||
-                'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.';
-            const enableOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN) ?? true;
-            const enableSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false;
-            const enableVsOrigin = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN) ?? true;
-            const enableVsSummarize = vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE) ?? true;
-
-            // Не отправляем API ключ в webview по соображениям безопасности
-            const safeConfig = {
-                ...config,
-                apiKey: config.apiKey ? '***' : '',
-                hasApiKey: await this._llmService.hasApiKey(),
-                localUrl: config.localUrl,
-                summarizePrompt: summarizePrompt,
-                enableOrigin: enableOrigin,
-                enableSummarize: enableSummarize,
-                enableVsOrigin: enableVsOrigin,
-                enableVsSummarize: enableVsSummarize
-            };
-
-            this._panel.webview.postMessage({
-                command: 'config',
-                config: safeConfig
-            });
-        } catch (error) {
-            // Если произошла ошибка, логируем её, но не показываем пользователю,
-            // так как это может быть временная проблема после сброса настроек
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            // Пытаемся отправить конфигурацию с дефолтными значениями
-            try {
-                const config = await this._llmService.getConfig();
-                const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-                const safeConfig = {
-                    ...config,
-                    apiKey: config.apiKey ? '***' : '',
-                    hasApiKey: await this._llmService.hasApiKey(),
-                    localUrl: config.localUrl || '',
-                    summarizePrompt: vscodeConfig.get<string>(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT) ||
-                        'Суммаризируй следующий код или текст. Создай краткое описание основных функций, классов, методов и их назначения. Сохрани важные детали, но сделай текст более компактным и структурированным.',
-                    enableOrigin: vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN) ?? true,
-                    enableSummarize: vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE) ?? false,
-                    enableVsOrigin: vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN) ?? true,
-                    enableVsSummarize: vscodeConfig.get<boolean>(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE) ?? true
-                };
-                this._panel.webview.postMessage({
-                    command: 'config',
-                    config: safeConfig
-                });
-            } catch (fallbackError) {
-                vscode.window.showErrorMessage(`Ошибка загрузки конфигурации: ${errorMessage}`);
-            }
-        }
-    }
-
-    /**
-     * Обработка обновления конфигурации
-     */
-    private async _handleUpdateConfig(config: any) {
-        try {
-            await this._llmService.updateConfig(config);
-
-            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-
-            // Сохраняем промпт суммаризации отдельно
-            if (config.summarizePrompt !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT, config.summarizePrompt, vscode.ConfigurationTarget.Global);
-            }
-
-            // Сохраняем настройки включения/отключения типов векторов
-            if (config.enableOrigin !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN, config.enableOrigin, vscode.ConfigurationTarget.Global);
-            }
-            if (config.enableSummarize !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE, config.enableSummarize, vscode.ConfigurationTarget.Global);
-            }
-            if (config.enableVsOrigin !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN, config.enableVsOrigin, vscode.ConfigurationTarget.Global);
-            }
-            if (config.enableVsSummarize !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE, config.enableVsSummarize, vscode.ConfigurationTarget.Global);
-            }
-
-            await this._sendConfigToWebview();
-            vscode.window.showInformationMessage('Настройки успешно сохранены');
-            // Явно отправляем сообщение об успешном сохранении для восстановления кнопки
-            this._panel.webview.postMessage({
-                command: 'configUpdated'
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            vscode.window.showErrorMessage(`Ошибка сохранения настроек: ${errorMessage}`);
-            // Отправляем сообщение об ошибке в webview для восстановления кнопки
-            this._panel.webview.postMessage({
-                command: 'configUpdateError',
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Обработка запроса на сброс настроек (с подтверждением)
-     */
-    private async _handleRequestResetConfig() {
-        const action = await vscode.window.showWarningMessage(
-            'Вы уверены, что хотите сбросить настройки к значениям по умолчанию?',
-            { modal: true },
-            'Да, сбросить',
-            'Отмена'
-        );
-
-        if (action === 'Да, сбросить') {
-            // Блокируем кнопку в webview
-            this._panel.webview.postMessage({
-                command: 'resetConfigStarted'
-            });
-            // Выполняем сброс
-            await this._handleResetConfig();
-        } else {
-            // Пользователь отменил, восстанавливаем кнопку
-            this._panel.webview.postMessage({
-                command: 'resetConfigCancelled'
-            });
-        }
-    }
-
-    /**
-     * Обработка сброса настроек к значениям по умолчанию
-     * Все значения берутся из package.json через VS Code Configuration API
-     */
-    private async _handleResetConfig() {
-        try {
-            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-
-            // Сбрасываем все настройки LLM к значениям по умолчанию
-            // Используем undefined для удаления пользовательских значений,
-            // что вернет дефолтные значения из package.json
-            await vscodeConfig.update(CONFIG_KEYS.LLM.PROVIDER, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.MODEL, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.EMBEDDER_MODEL, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.TEMPERATURE, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.MAX_TOKENS, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.BASE_URL, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.API_TYPE, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.LOCAL_URL, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.TIMEOUT, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.LLM.SYSTEM_PROMPT, undefined, vscode.ConfigurationTarget.Global);
-
-            // Сбрасываем настройки векторизации
-            await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN, undefined, vscode.ConfigurationTarget.Global);
-            await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE, undefined, vscode.ConfigurationTarget.Global);
-
-            // Очищаем API ключ из SecretStorage
-            await this._llmService.setApiKey('');
-
-            // Отправляем обновленную конфигурацию в webview
-            await this._sendConfigToWebview();
-            vscode.window.showInformationMessage('Настройки сброшены к значениям по умолчанию');
-            // Явно отправляем сообщение об успешном сбросе для восстановления кнопки
-            this._panel.webview.postMessage({
-                command: 'configReset'
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            vscode.window.showErrorMessage(`Ошибка сброса настроек: ${errorMessage}`);
-            // Отправляем сообщение об ошибке в webview для восстановления кнопки
-            this._panel.webview.postMessage({
-                command: 'configResetError',
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Обработка проверки локального сервера
-     */
-    private async _handleCheckLocalServer(url: string, provider: string) {
-        try {
-            let available = false;
-            if (provider === 'ollama') {
-                const providerInstance = new OllamaProvider();
-                available = await providerInstance.checkAvailability(url);
-            } else if (provider === 'openai') {
-                const providerInstance = new OpenAiCompatibleProvider();
-                available = await providerInstance.checkAvailability(url);
-            }
-
-            this._panel.webview.postMessage({
-                command: 'localServerStatus',
-                available: available
-            });
-        } catch (error) {
-            this._panel.webview.postMessage({
-                command: 'localServerStatus',
-                available: false
-            });
-        }
-    }
-
-    /**
-     * Обработка команды векторизации всех файлов
-     */
-    private async _handleVectorizeAll(vectorizeMessage?: VectorizeAllMessage) {
-        // Сохраняем конфигурацию из сообщения перед векторизацией
-        if (vectorizeMessage) {
-            const vscodeConfig = vscode.workspace.getConfiguration('aiCoder');
-
-            // Сохраняем настройки векторизации
-            if (vectorizeMessage.enableOrigin !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_ORIGIN, vectorizeMessage.enableOrigin, vscode.ConfigurationTarget.Global);
-            }
-            if (vectorizeMessage.enableSummarize !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_SUMMARIZE, vectorizeMessage.enableSummarize, vscode.ConfigurationTarget.Global);
-            }
-            if (vectorizeMessage.enableVsOrigin !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_ORIGIN, vectorizeMessage.enableVsOrigin, vscode.ConfigurationTarget.Global);
-            }
-            if (vectorizeMessage.enableVsSummarize !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.ENABLE_VS_SUMMARIZE, vectorizeMessage.enableVsSummarize, vscode.ConfigurationTarget.Global);
-            }
-            if (vectorizeMessage.summarizePrompt !== undefined) {
-                await vscodeConfig.update(CONFIG_KEYS.VECTORIZATION.SUMMARIZE_PROMPT, vectorizeMessage.summarizePrompt, vscode.ConfigurationTarget.Global);
-            }
-
-            // Обновляем конфигурацию модели эмбеддинга и суммаризации, если они переданы
-            if (vectorizeMessage.embedderModel) {
-                const currentConfig = await this._llmService.getConfig();
-
-                // Получаем реальное API-имя модели из списка серверов
-                // modelName из webview содержит displayName, а для API нужен model.name
-                let apiModelName = vectorizeMessage.embedderModel.modelName;
-                const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-                const server = servers.find(s => s.id === vectorizeMessage.embedderModel!.serverId);
-                if (server?.models) {
-                    const model = server.models.find(m =>
-                        m.id === vectorizeMessage.embedderModel!.modelId ||
-                        m.name === vectorizeMessage.embedderModel!.modelName
-                    );
-                    if (model) {
-                        apiModelName = model.name; // Используем реальное API-имя модели
-                        Logger.info(`[AICoderPanel] Модель эмбеддинга: displayName="${model.displayName || model.name}", apiName="${model.name}"`);
-                    }
-                }
-
-                const updateData: Partial<typeof currentConfig> = {
-                    ...currentConfig,
-                    embedderModel: apiModelName
-                };
-                // Используем URL сервера из настроек модели эмбеддинга
-                if (vectorizeMessage.embedderModel.url) {
-                    updateData.localUrl = vectorizeMessage.embedderModel.url;
-                    updateData.baseUrl = vectorizeMessage.embedderModel.url;
-                    Logger.info(`[AICoderPanel] Используем URL сервера эмбеддингов: ${vectorizeMessage.embedderModel.url}`);
-                }
-                if (vectorizeMessage.embedderModel.apiKey) {
-                    updateData.apiKey = vectorizeMessage.embedderModel.apiKey;
-                }
-                await this._llmService.updateConfig(updateData);
-            }
-        }
-
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            Logger.error('[AICoderPanel] Не открыта рабочая область');
-            vscode.window.showErrorMessage('Не открыта рабочая область');
-            return;
-        }
-
-        // Запрашиваем подтверждение
-        const action = await vscode.window.showWarningMessage(
-            'Векторизация может занять длительное время. Продолжить?',
-            { modal: true },
-            'Да',
-            'Нет'
-        );
-
-        if (action !== 'Да') {
-            return;
-        }
-
-        // Показываем прогресс
-        vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Векторизация файлов",
-            cancellable: true
-        }, async (progress, token) => {
-            progress.report({ increment: 0, message: "Начало векторизации..." });
-
-            try {
-                // Запускаем векторизацию
-                const result = await this._embeddingService.vectorizeAllUnprocessed(workspaceFolder);
-
-                progress.report({ increment: 100, message: "Готово!" });
-
-                // Отправка результата в webview
-                this._panel.webview.postMessage({
-                    command: 'vectorizationComplete',
-                    result: {
-                        processed: result.processed,
-                        errors: result.errors
-                    }
-                });
-
-                vscode.window.showInformationMessage(
-                    `Векторизация завершена. Обработано: ${result.processed}, Ошибок: ${result.errors}`
-                );
-
-                // Обновляем размер хранилища после векторизации
-                this._handleGetStorageCount();
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-                const errorStack = error instanceof Error ? error.stack : undefined;
-                Logger.error(`[AICoderPanel] Ошибка при векторизации: ${errorMessage}`, error as Error);
-                if (errorStack) {
-                    Logger.error(`[AICoderPanel] Стек ошибки: ${errorStack}`, error as Error);
-                }
-                vscode.window.showErrorMessage(`Ошибка векторизации: ${errorMessage}`);
-
-                this._panel.webview.postMessage({
-                    command: 'vectorizationError',
-                    error: errorMessage
-                });
-            }
-        });
-    }
-
-    /**
-     * Обработка команды поиска
-     */
-    private async _handleSearch(query: string, limit?: number) {
-        // Получаем значение по умолчанию из настроек
-        if (limit === undefined) {
-            const config = vscode.workspace.getConfiguration('aiCoder');
-            limit = config.get<number>(CONFIG_KEYS.UI.SEARCH_DEFAULT_LIMIT) ?? 10;
-        }
-        if (!query || query.trim().length === 0) {
-            vscode.window.showWarningMessage('Пожалуйста, введите запрос для поиска');
-            return;
-        }
-
-        // Показываем индикатор прогресса
-        vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Поиск в хранилище",
-            cancellable: false
-        }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
-            progress.report({ increment: 0, message: "Поиск похожих файлов..." });
-
-            try {
-                const results = await this._embeddingService.searchSimilar(query, limit);
-
-                progress.report({ increment: 100, message: "Готово!" });
-
-                // Отправка результата обратно в webview
-                this._panel.webview.postMessage({
-                    command: 'searchResults',
-                    results: results
-                });
-
-                if (results.length === 0) {
-                    vscode.window.showInformationMessage('Похожие файлы не найдены');
-                } else {
-                    vscode.window.showInformationMessage(`Найдено файлов: ${results.length}`);
-                }
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-                vscode.window.showErrorMessage(`Ошибка поиска: ${errorMessage}`);
-
-                this._panel.webview.postMessage({
-                    command: 'searchError',
-                    error: errorMessage
-                });
-            }
-        });
-    }
-
-    /**
-     * Обработка получения всех записей
-     */
-    private async _handleGetAllItems(limit?: number) {
-        try {
-            const results = await this._embeddingService.getAllItems(limit);
-
-            // Отправка результата обратно в webview
-            this._panel.webview.postMessage({
-                command: 'searchResults',
-                results: results
-            });
-
-            if (results.length === 0) {
-                vscode.window.showInformationMessage('Записи в хранилище отсутствуют');
-            } else {
-                vscode.window.showInformationMessage(`Загружено записей: ${results.length}`);
-            }
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            vscode.window.showErrorMessage(`Ошибка загрузки записей: ${errorMessage}`);
-
-            this._panel.webview.postMessage({
-                command: 'searchError',
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Обработка открытия файла
-     */
-    private async _handleOpenFile(filePath: string) {
-        try {
-            const uri = vscode.Uri.file(filePath);
-            const document = await vscode.workspace.openTextDocument(uri);
-            await vscode.window.showTextDocument(document);
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            vscode.window.showErrorMessage(`Не удалось открыть файл ${filePath}: ${errorMessage}`);
-        }
-    }
-
-    /**
-     * Обработка очистки хранилища
-     */
-    private async _handleClearStorage() {
-        // Запрашиваем подтверждение
-        const confirm = await vscode.window.showWarningMessage(
-            'Вы уверены, что хотите очистить хранилище эмбеддингов? Все векторизованные данные будут удалены.',
-            { modal: true },
-            'Да, очистить',
-            'Отмена'
-        );
-
-        if (confirm !== 'Да, очистить') {
-            return;
-        }
-
-        // Показываем индикатор прогресса
-        vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Очистка хранилища",
-            cancellable: false
-        }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
-            progress.report({ increment: 0, message: "Очистка данных..." });
-
-            try {
-                await this._embeddingService.clearStorage();
-
-                progress.report({ increment: 100, message: "Готово!" });
-
-                // Отправка результата обратно в webview
-                this._panel.webview.postMessage({
-                    command: 'storageCleared'
-                });
-
-                vscode.window.showInformationMessage('Хранилище эмбеддингов успешно очищено');
-
-                // Обновляем размер хранилища после очистки
-                this._handleGetStorageCount();
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-                vscode.window.showErrorMessage(`Ошибка очистки хранилища: ${errorMessage}`);
-
-                this._panel.webview.postMessage({
-                    command: 'storageClearError',
-                    error: errorMessage
-                });
-            }
-        });
-    }
-
-    /**
-     * Обработка получения количества записей в хранилище
-     */
-    private async _handleGetStorageCount() {
-        try {
-            const [count, size] = await Promise.all([
-                this._embeddingService.getStorageCount(),
-                this._embeddingService.getStorageSize()
-            ]);
-
-            // Отправка результата обратно в webview
-            this._panel.webview.postMessage({
-                command: 'storageCount',
-                count: count,
-                size: size
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-
-            this._panel.webview.postMessage({
-                command: 'storageCountError',
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Получение списка серверов
-     */
-    private async _handleGetServers() {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            Logger.info(`Отправка списка серверов в webview, количество: ${servers.length}`);
-            Logger.info(`Детали серверов:`, servers.map(s => ({ id: s.id, name: s.name, active: s.active })));
-            this._panel.webview.postMessage({
-                command: 'serversList',
-                servers: servers
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            Logger.error('Ошибка получения списка серверов', error as Error);
-            this._panel.webview.postMessage({
-                command: 'serversList',
-                servers: [],
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Получение списка активных моделей
-     */
-    private async _handleGetActiveModels() {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const activeModels: Array<{ serverId: string; serverName: string; modelId: string; modelName: string; url: string; apiKey?: string; temperature?: number; maxTokens?: number; systemPrompt?: string }> = [];
-
-            servers.forEach(server => {
-                if (server.active !== false && server.models) {
-                    server.models.forEach(model => {
-                        if (model.active !== false) {
-                            activeModels.push({
-                                serverId: server.id,
-                                serverName: server.name,
-                                modelId: model.id || model.name,
-                                modelName: model.displayName || model.name, // Используем displayName если есть
-                                url: server.url,
-                                apiKey: server.apiKey,
-                                temperature: model.temperature,
-                                maxTokens: model.maxTokens,
-                                systemPrompt: model.systemPrompt
-                            });
-                        }
-                    });
-                }
-            });
-
-            // Включаем сохраненные выбранные модели в ответ
-            const savedSelections = {
-                generationModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_GENERATION_MODEL) || '',
-                embedderModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_EMBEDDER_MODEL) || '',
-                summarizeModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_SUMMARIZE_MODEL) || ''
-            };
-
-            this._panel.webview.postMessage({
-                command: 'activeModelsList',
-                models: activeModels,
-                savedSelections: savedSelections
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'activeModelsList',
-                models: [],
-                savedSelections: { generationModel: '', embedderModel: '', summarizeModel: '' }
-            });
-        }
-    }
-
-    /**
-     * Добавление нового сервера
-     */
-    private async _handleAddServer(serverData: { name: string; url: string; apiKey?: string }) {
-        try {
-            Logger.info(`Добавление сервера: ${serverData.name}, URL: ${serverData.url}`);
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-
-            // Проверка уникальности имени сервера
-            const trimmedName = serverData.name.trim();
-            if (!trimmedName) {
-                throw new Error('Имя сервера не может быть пустым');
-            }
-
-            const existingServer = servers.find(s => s.name.trim().toLowerCase() === trimmedName.toLowerCase());
-            if (existingServer) {
-                throw new Error(`Сервер с именем "${trimmedName}" уже существует`);
-            }
-
-            const newServer: LLMServer = {
-                id: `server-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                name: trimmedName,
-                url: serverData.url,
-                apiKey: serverData.apiKey,
-                active: true, // По умолчанию сервер активен
-                status: 'unavailable'
-            };
-            servers.push(newServer);
-            await this._context.workspaceState.update('llmServers', servers);
-
-            Logger.info(`Сервер успешно добавлен, ID: ${newServer.id}`);
-            Logger.info(`Всего серверов в хранилище: ${servers.length}`);
-
-            // Отправляем сообщение о добавлении сервера
-            this._panel.webview.postMessage({
-                command: 'serverAdded',
-                server: newServer
-            });
-
-            // Также отправляем обновленный список серверов с небольшой задержкой
-            // чтобы компонент успел обработать serverAdded и обновить UI
-            setTimeout(() => {
-                Logger.info(`Отправка обновленного списка серверов, количество: ${servers.length}`);
-                this._panel.webview.postMessage({
-                    command: 'serversList',
-                    servers: servers
-                });
-                // Отправляем обновленный список активных моделей
-                this._handleGetActiveModels();
-            }, 50);
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            Logger.error('Ошибка добавления сервера', error as Error);
-            this._panel.webview.postMessage({
-                command: 'serverAddError',
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Обновление сервера
-     */
-    private async _handleUpdateServer(serverId: string, serverData: { name: string; url: string; apiKey?: string }) {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const serverIndex = servers.findIndex(s => s.id === serverId);
-
-            if (serverIndex === -1) {
-                throw new Error('Сервер не найден');
-            }
-
-            // Проверка уникальности имени сервера (исключая текущий сервер)
-            const trimmedName = serverData.name.trim();
-            if (!trimmedName) {
-                throw new Error('Имя сервера не может быть пустым');
-            }
-
-            const existingServer = servers.find(s => s.id !== serverId && s.name.trim().toLowerCase() === trimmedName.toLowerCase());
-            if (existingServer) {
-                throw new Error(`Сервер с именем "${trimmedName}" уже существует`);
-            }
-
-            servers[serverIndex] = {
-                ...servers[serverIndex],
-                name: trimmedName,
-                url: serverData.url,
-                apiKey: serverData.apiKey
-            };
-
-            await this._context.workspaceState.update('llmServers', servers);
-
-            // Отправляем сообщение об обновлении сервера
-            this._panel.webview.postMessage({
-                command: 'serverUpdated',
-                server: servers[serverIndex]
-            });
-
-            // Также отправляем обновленный список серверов с небольшой задержкой
-            setTimeout(() => {
-                this._panel.webview.postMessage({
-                    command: 'serversList',
-                    servers: servers
-                });
-                // Отправляем обновленный список активных моделей
-                this._handleGetActiveModels();
-            }, 50);
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'serverUpdateError',
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Удаление сервера
-     */
-    private async _handleDeleteServer(serverId: string) {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const filteredServers = servers.filter(s => s.id !== serverId);
-            await this._context.workspaceState.update('llmServers', filteredServers);
-
-            // Отправляем сообщение об удалении сервера
-            this._panel.webview.postMessage({
-                command: 'serverDeleted',
-                serverId: serverId
-            });
-
-            // Также отправляем обновленный список серверов с небольшой задержкой
-            setTimeout(() => {
-                this._panel.webview.postMessage({
-                    command: 'serversList',
-                    servers: filteredServers
-                });
-                // Отправляем обновленный список активных моделей
-                this._handleGetActiveModels();
-            }, 50);
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'serverDeleteError',
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Проверка подключения к серверу
-     */
-    private async _handleCheckServer(serverId: string, url: string, apiKey?: string) {
-        try {
-            const provider = new OpenAiCompatibleProvider();
-            const available = await provider.checkAvailability(url);
-
-            this._panel.webview.postMessage({
-                command: 'serverCheckResult',
-                serverId: serverId,
-                available: available
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'serverCheckError',
-                serverId: serverId,
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Получение списка доступных моделей с сервера (без сохранения)
-     */
-    private async _handleGetAvailableModels(serverId: string, url: string, apiKey?: string) {
-        try {
-            const provider = new OpenAiCompatibleProvider();
-            const models = await provider.listModels(url, apiKey);
-
-            this._panel.webview.postMessage({
-                command: 'availableModelsList',
-                serverId: serverId,
-                models: models
-            });
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'availableModelsListError',
-                serverId: serverId,
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Получение списка моделей с сервера (для обратной совместимости)
-     */
-    private async _handleGetServerModels(serverId: string, url: string, apiKey?: string) {
-        try {
-            const provider = new OpenAiCompatibleProvider();
-            const models = await provider.listModels(url, apiKey);
-
-            // Загружаем сохраненные настройки моделей для этого сервера
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const serverIndex = servers.findIndex(s => s.id === serverId);
-
-            if (serverIndex === -1) {
-                throw new Error('Сервер не найден');
-            }
-
-            const savedModels = servers[serverIndex].models || [];
-
-            // Объединяем полученные модели с сохраненными настройками
-            const modelsWithSettings: ServerModel[] = models.map((modelName, index) => {
-                const savedModel = savedModels.find(m => m.name === modelName);
-                return savedModel || {
-                    id: `model-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-                    name: modelName,
-                    active: true // По умолчанию модель активна
-                };
-            });
-
-            // Обновляем сервер с новыми моделями
-            servers[serverIndex].models = modelsWithSettings;
-            await this._context.workspaceState.update('llmServers', servers);
-
-            this._panel.webview.postMessage({
-                command: 'serverModelsList',
-                serverId: serverId,
-                models: modelsWithSettings
-            });
-
-            // Отправляем обновленный список активных моделей
-            this._handleGetActiveModels();
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'serverModelsListError',
-                serverId: serverId,
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Добавление модели к серверу
-     */
-    private async _handleAddServerModel(serverId: string, model: ServerModel) {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const serverIndex = servers.findIndex(s => s.id === serverId);
-
-            if (serverIndex === -1) {
-                throw new Error('Сервер не найден');
-            }
-
-            if (!servers[serverIndex].models) {
-                servers[serverIndex].models = [];
-            }
-
-            // Проверка обязательности и уникальности названия модели
-            // displayName теперь обязателен
-            if (!model.displayName || !model.displayName.trim()) {
-                throw new Error('Пользовательское наименование модели обязательно для заполнения');
-            }
-            const modelDisplayName = model.displayName.trim();
-
-            // Проверяем уникальность среди всех моделей всех серверов
-            // Сравниваем displayName (displayName теперь всегда задан)
-            for (const server of servers) {
-                if (server.models) {
-                    for (const existingModel of server.models) {
-                        // Сравниваем displayName (теперь он всегда задан)
-                        const existingDisplayName = existingModel.displayName?.trim() || existingModel.name.trim();
-                        // Сравниваем без учета регистра
-                        if (existingDisplayName.toLowerCase() === modelDisplayName.toLowerCase()) {
-                            throw new Error(`Модель с названием "${modelDisplayName}" уже существует`);
-                        }
-                    }
-                }
-            }
-
-            // Создаем новую модель с уникальным ID (разрешаем добавлять одну и ту же модель несколько раз)
-            const newModel: ServerModel = {
-                id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                name: model.name,
-                displayName: modelDisplayName,
-                temperature: model.temperature,
-                maxTokens: model.maxTokens,
-                systemPrompt: model.systemPrompt,
-                active: model.active !== false
-            };
-
-            servers[serverIndex].models!.push(newModel);
-            await this._context.workspaceState.update('llmServers', servers);
-
-            this._panel.webview.postMessage({
-                command: 'serverModelAdded',
-                serverId: serverId,
-                model: newModel
-            });
-
-            // Отправляем обновленный список серверов
-            setTimeout(() => {
-                this._panel.webview.postMessage({
-                    command: 'serversList',
-                    servers: servers
-                });
-                // Отправляем обновленный список активных моделей
-                this._handleGetActiveModels();
-            }, 50);
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'serverModelAddError',
-                serverId: serverId,
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Обновление настроек модели сервера
-     */
-    private async _handleUpdateServerModel(serverId: string, model: ServerModel) {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const serverIndex = servers.findIndex(s => s.id === serverId);
-
-            if (serverIndex === -1) {
-                throw new Error('Сервер не найден');
-            }
-
-            if (!servers[serverIndex].models) {
-                servers[serverIndex].models = [];
-            }
-
-            const modelIndex = servers[serverIndex].models!.findIndex(m => m.id === model.id || m.name === model.name);
-
-            // Проверка обязательности и уникальности названия модели
-            // displayName теперь обязателен
-            if (!model.displayName || !model.displayName.trim()) {
-                throw new Error('Пользовательское наименование модели обязательно для заполнения');
-            }
-            const modelDisplayName = model.displayName.trim();
-
-            // Проверяем уникальность среди всех моделей всех серверов (исключая текущую модель)
-            // Сравниваем displayName с displayName (displayName теперь всегда задан)
-            for (const server of servers) {
-                if (server.models) {
-                    for (const existingModel of server.models) {
-                        // Пропускаем текущую модель при обновлении
-                        if (modelIndex !== -1 && existingModel.id === servers[serverIndex].models![modelIndex].id) {
-                            continue;
-                        }
-                        const existingDisplayName = existingModel.displayName?.trim() || existingModel.name.trim();
-                        // Сравниваем без учета регистра
-                        if (existingDisplayName.toLowerCase() === modelDisplayName.toLowerCase()) {
-                            throw new Error(`Модель с названием "${modelDisplayName}" уже существует`);
-                        }
-                    }
-                }
-            }
-
-            if (modelIndex === -1) {
-                // Добавляем новую модель
-                if (!model.id) {
-                    model.id = `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                }
-                servers[serverIndex].models!.push({
-                    ...model,
-                    displayName: modelDisplayName
-                });
-            } else {
-                // Обновляем существующую модель, сохраняя оригинальное имя
-                const existingModel = servers[serverIndex].models![modelIndex];
-                servers[serverIndex].models![modelIndex] = {
-                    ...existingModel,
-                    ...model,
-                    name: existingModel.name, // Сохраняем оригинальное имя модели
-                    displayName: modelDisplayName
-                };
-            }
-
-            await this._context.workspaceState.update('llmServers', servers);
-
-            this._panel.webview.postMessage({
-                command: 'serverModelUpdated',
-                serverId: serverId,
-                model: model
-            });
-
-            // Отправляем обновленный список активных моделей
-            this._handleGetActiveModels();
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'serverModelUpdateError',
-                serverId: serverId,
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Переключение активности сервера
-     */
-    private async _handleToggleServerActive(serverId: string, active: boolean) {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const serverIndex = servers.findIndex(s => s.id === serverId);
-
-            if (serverIndex === -1) {
-                throw new Error('Сервер не найден');
-            }
-
-            servers[serverIndex].active = active;
-            await this._context.workspaceState.update('llmServers', servers);
-
-            this._panel.webview.postMessage({
-                command: 'serverActiveToggled',
-                serverId: serverId,
-                active: active
-            });
-
-            // Отправляем обновленный список активных моделей
-            this._handleGetActiveModels();
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'serverToggleError',
-                serverId: serverId,
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Переключение активности модели сервера
-     */
-    private async _handleToggleModelActive(serverId: string, modelId: string, active: boolean) {
-        try {
-            const servers = this._context.workspaceState.get<LLMServer[]>('llmServers') || [];
-            const serverIndex = servers.findIndex(s => s.id === serverId);
-
-            if (serverIndex === -1) {
-                throw new Error('Сервер не найден');
-            }
-
-            if (!servers[serverIndex].models) {
-                throw new Error('Модели не найдены');
-            }
-
-            const modelIndex = servers[serverIndex].models!.findIndex(m => m.id === modelId || m.name === modelId);
-
-            if (modelIndex === -1) {
-                throw new Error('Модель не найдена');
-            }
-
-            servers[serverIndex].models![modelIndex].active = active;
-            await this._context.workspaceState.update('llmServers', servers);
-
-            this._panel.webview.postMessage({
-                command: 'modelActiveToggled',
-                serverId: serverId,
-                modelId: modelId,
-                active: active
-            });
-
-            // Отправляем обновленный список активных моделей
-            this._handleGetActiveModels();
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-            this._panel.webview.postMessage({
-                command: 'modelToggleError',
-                serverId: serverId,
-                modelId: modelId,
-                error: errorMessage
-            });
-        }
-    }
-
-    /**
-     * Сохранение выбранных моделей в globalState
-     * @param selections - объект с ключами generationModel, embedderModel, summarizeModel (формат serverId:modelId)
-     */
-    private async _handleSaveSelectedModels(selections: { generationModel?: string; embedderModel?: string; summarizeModel?: string }) {
-        try {
-            if (selections.generationModel !== undefined) {
-                await this._context.globalState.update(STORAGE_KEYS.SELECTED_GENERATION_MODEL, selections.generationModel);
-            }
-            if (selections.embedderModel !== undefined) {
-                await this._context.globalState.update(STORAGE_KEYS.SELECTED_EMBEDDER_MODEL, selections.embedderModel);
-            }
-            if (selections.summarizeModel !== undefined) {
-                await this._context.globalState.update(STORAGE_KEYS.SELECTED_SUMMARIZE_MODEL, selections.summarizeModel);
-            }
-            Logger.info('Выбранные модели сохранены', selections);
-        } catch (error) {
-            Logger.error('Ошибка сохранения выбранных моделей', error as Error);
-        }
-    }
-
-    /**
-     * Получение сохраненных выбранных моделей из globalState и отправка в webview
-     */
-    private _handleGetSelectedModels() {
-        const selections = {
-            generationModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_GENERATION_MODEL) || '',
-            embedderModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_EMBEDDER_MODEL) || '',
-            summarizeModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_SUMMARIZE_MODEL) || ''
-        };
-
-        this._panel.webview.postMessage({
-            command: 'selectedModels',
-            selections: selections
-        });
-    }
-
-    /**
-     * Обработка запроса на закрытие настроек с проверкой изменений
-     */
-    private async _handleRequestCloseSettings(hasChanges: boolean) {
-        if (!hasChanges) {
-            // Нет изменений - просто закрываем
-            this._panel.webview.postMessage({
-                command: 'closeSettings'
-            });
-            return;
-        }
-
-        // Есть изменения - показываем диалог
-        const action = await vscode.window.showWarningMessage(
-            'У вас есть несохраненные изменения. Что вы хотите сделать?',
-            { modal: true },
-            'Выйти с сохранением',
-            'Выйти без сохранения'
-        );
-
-        if (action === 'Выйти с сохранением') {
-            // Сохраняем настройки и закрываем
-            this._panel.webview.postMessage({
-                command: 'saveAndCloseSettings'
-            });
-        } else if (action === 'Выйти без сохранения') {
-            // Отменяем изменения и закрываем
-            this._panel.webview.postMessage({
-                command: 'discardAndCloseSettings'
-            });
-        } else {
-            // Пользователь закрыл диалог (нажал Escape или кликнул вне диалога) - отменяем закрытие
-            this._panel.webview.postMessage({
-                command: 'cancelCloseSettings'
-            });
-        }
-    }
-
-    /**
-     * Обработка команды генерации
-     */
-    private async _handleGenerate(text: string, model?: any) {
-        if (!text || text.trim().length === 0) {
-            vscode.window.showWarningMessage('Пожалуйста, введите текст для генерации');
-            return;
-        }
-
-        // Показываем индикатор прогресса
-        vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: "Генерация кода",
-            cancellable: false
-        }, async (progress: vscode.Progress<{ message?: string; increment?: number }>) => {
-            progress.report({ increment: 0, message: "Обработка запроса..." });
-
-            try {
-                // Отправляем команду начала генерации
-                this._panel.webview.postMessage({
-                    command: 'generationStarted'
-                });
-
-                let fullResponse = '';
-                let thinkingContent = '';
-                let answerContent = '';
-
-                // Маркеры для разделения размышлений и ответа
-                const thinkingStartMarkers = ['<think>', '<think>', '```thinking', 'thinking:', 'размышление:'];
-                const thinkingEndMarkers = ['</think>', '</think>', '```', 'answer:', 'ответ:'];
-
-                let inThinkingBlock = false;
-                let thinkingStartPos = -1;
-                let thinkingEndPos = -1;
-                let thinkingStartMarker = '';
-                let thinkingEndMarker = '';
-
-                // Создаем конфигурацию из выбранной модели или используем дефолтную
-                let config: any;
-                if (model) {
-                    const defaultConfig = await this._llmService.getConfig();
-                    config = {
-                        provider: 'openai', // Всегда используем openai-совместимый провайдер для подключений
-                        apiKey: model.apiKey || '',
-                        model: model.modelName,
-                        baseUrl: model.url,
-                        temperature: model.temperature !== undefined ? model.temperature : defaultConfig.temperature,
-                        maxTokens: model.maxTokens !== undefined ? model.maxTokens : defaultConfig.maxTokens,
-                        systemPrompt: model.systemPrompt || defaultConfig.systemPrompt,
-                        timeout: defaultConfig.timeout
-                    };
-                } else {
-                    config = await this._llmService.getConfig();
-                }
-
-                // Используем streaming генерацию с кастомной конфигурацией
-                const provider = new OpenAiCompatibleProvider();
-
-                // Используем streaming если доступен, иначе обычную генерацию
-                if (provider.stream) {
-                    for await (const chunk of provider.stream(text, config)) {
-                        fullResponse += chunk;
-
-                        // Проверяем начало блока размышлений
-                        if (!inThinkingBlock) {
-                            for (const marker of thinkingStartMarkers) {
-                                // Ищем маркер без учета регистра, но используем реальную позицию
-                                const lowerResponse = fullResponse.toLowerCase();
-                                const lowerMarker = marker.toLowerCase();
-                                const pos = lowerResponse.indexOf(lowerMarker);
-                                if (pos !== -1) {
-                                    inThinkingBlock = true;
-                                    thinkingStartMarker = marker;
-                                    // Пропускаем сам маркер - начинаем после него
-                                    // Используем реальную длину маркера из оригинального текста
-                                    const actualMarker = fullResponse.substring(pos, pos + marker.length);
-                                    thinkingStartPos = pos + actualMarker.length;
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Если мы в блоке размышлений, ищем конец
-                        if (inThinkingBlock && thinkingEndPos === -1) {
-                            for (const marker of thinkingEndMarkers) {
-                                // Ищем маркер без учета регистра, но используем реальную позицию
-                                const lowerResponse = fullResponse.toLowerCase();
-                                const lowerMarker = marker.toLowerCase();
-                                const pos = lowerResponse.indexOf(lowerMarker, thinkingStartPos);
-                                if (pos !== -1) {
-                                    // Нашли конец размышлений
-                                    thinkingEndPos = pos;
-                                    thinkingEndMarker = marker;
-                                    // Используем реальную длину маркера из оригинального текста
-                                    const actualMarker = fullResponse.substring(pos, pos + marker.length);
-                                    // Извлекаем содержимое между тегами (без самих тегов)
-                                    thinkingContent = fullResponse.substring(thinkingStartPos, thinkingEndPos).trim();
-                                    // Ответ начинается после закрывающего тега
-                                    answerContent = fullResponse.substring(thinkingEndPos + actualMarker.length).trim();
-                                    inThinkingBlock = false;
-                                    break;
-                                }
-                            }
-                        }
-
-                        // Отправляем обновление в реальном времени
-                        if (inThinkingBlock && thinkingEndPos === -1) {
-                            // Пока в блоке размышлений, показываем накопленный текст как размышления (без открывающего тега)
-                            const currentThinking = fullResponse.substring(thinkingStartPos);
-                            // Удаляем возможные закрывающие теги из размышлений
-                            let cleanThinking = currentThinking;
-                            for (const marker of thinkingEndMarkers) {
-                                const lowerThinking = cleanThinking.toLowerCase();
-                                const lowerMarker = marker.toLowerCase();
-                                const markerPos = lowerThinking.indexOf(lowerMarker);
-                                if (markerPos !== -1) {
-                                    // Удаляем тег и все после него из размышлений
-                                    cleanThinking = cleanThinking.substring(0, markerPos).trim();
-                                }
-                            }
-                            thinkingContent = cleanThinking;
-
-                            this._panel.webview.postMessage({
-                                command: 'streamChunk',
-                                thinking: thinkingContent,
-                                answer: '',
-                                isThinking: true
-                            });
-                        } else if (thinkingEndPos !== -1) {
-                            // После конца размышлений показываем ответ (без закрывающего тега)
-                            answerContent = fullResponse.substring(thinkingEndPos + thinkingEndMarker.length).trim();
-
-                            this._panel.webview.postMessage({
-                                command: 'streamChunk',
-                                thinking: thinkingContent,
-                                answer: answerContent,
-                                isThinking: false
-                            });
-                        } else {
-                            // Если нет блока размышлений, весь текст показываем как размышления в реальном времени
-                            // А в конце весь текст будет итоговым ответом
-                            thinkingContent = fullResponse;
-
-                            this._panel.webview.postMessage({
-                                command: 'streamChunk',
-                                thinking: thinkingContent,
-                                answer: '',
-                                isThinking: true
-                            });
-                        }
-                    }
-                } else {
-                    // Если streaming не поддерживается, используем обычную генерацию
-                    const result = await provider.generate(text, config);
-                    fullResponse = result;
-                }
-
-                // Финальная обработка
-                if (thinkingEndPos === -1 && thinkingStartPos !== -1) {
-                    // Был блок размышлений, но не нашли конец - весь текст после начала = размышления (без открывающего тега)
-                    thinkingContent = fullResponse.substring(thinkingStartPos).trim();
-                    // Удаляем возможные закрывающие теги
-                    for (const marker of thinkingEndMarkers) {
-                        const lowerThinking = thinkingContent.toLowerCase();
-                        const lowerMarker = marker.toLowerCase();
-                        const markerPos = lowerThinking.indexOf(lowerMarker);
-                        if (markerPos !== -1) {
-                            // Используем реальную длину маркера
-                            const actualMarker = thinkingContent.substring(markerPos, markerPos + marker.length);
-                            thinkingContent = thinkingContent.substring(0, markerPos).trim();
-                            // Ответ начинается после закрывающего тега
-                            const answerStartPos = thinkingStartPos + markerPos + actualMarker.length;
-                            answerContent = fullResponse.substring(answerStartPos).trim();
-                            break;
-                        }
-                    }
-                } else if (thinkingEndPos !== -1) {
-                    // Было разделение - извлекаем содержимое без тегов
-                    // Используем реальную длину закрывающего маркера
-                    const actualEndMarker = fullResponse.substring(thinkingEndPos, thinkingEndPos + thinkingEndMarker.length);
-                    thinkingContent = fullResponse.substring(thinkingStartPos, thinkingEndPos).trim();
-                    answerContent = fullResponse.substring(thinkingEndPos + actualEndMarker.length).trim();
-                } else {
-                    // Не было блока размышлений - весь текст = итоговый ответ
-                    answerContent = fullResponse;
-                    thinkingContent = '';
-                }
-
-                progress.report({ increment: 100, message: "Готово!" });
-
-                // Отправка финального результата
-                this._panel.webview.postMessage({
-                    command: 'generationComplete',
-                    thinking: thinkingContent,
-                    answer: answerContent || fullResponse
-                });
-
-                vscode.window.showInformationMessage('Код успешно сгенерирован!');
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
-                vscode.window.showErrorMessage(`Ошибка генерации: ${errorMessage}`);
-
-                this._panel.webview.postMessage({
-                    command: 'error',
-                    error: errorMessage
-                });
-            }
-        });
-    }
-
-    /**
-     * Генерация HTML для webview
-     */
-    private _getHtmlForWebview(webview: vscode.Webview) {
-        // Получение URI для ресурсов
-        const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css')
-        );
-
-        // URI для утилит
-        const messageBusUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'utils', 'MessageBus.js')
-        );
-        const domUtilsUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'utils', 'domUtils.js')
-        );
-
-        // URI для UI компонентов
-        const buttonUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Button.js')
-        );
-        const selectUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Select.js')
-        );
-        const inputUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Input.js')
-        );
-        const modalUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Modal.js')
-        );
-        const tabsUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'Tabs.js')
-        );
-        const statusMessageUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'ui', 'StatusMessage.js')
-        );
-
-        // URI для функциональных компонентов
-        const codeGenerationUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'CodeGenerationComponent.js')
-        );
-        const searchUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'SearchComponent.js')
-        );
-        const settingsUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'SettingsComponent.js')
-        );
-        const serverManagementUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'components', 'features', 'ServerManagementComponent.js')
-        );
-
-        // Главный скрипт
-        const mainScriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js')
-        );
-
-        // Используем nonce для безопасности
-        const nonce = getNonce();
-
-        return `<!DOCTYPE html>
-            <html lang="ru">
-            <head>
-                <meta charset="UTF-8">
-                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <link href="${styleUri}" rel="stylesheet">
-                <title>AI Coder</title>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>AI Code Generator</h1>
-                        <div class="header-actions">
-                            <div class="tabs">
-                                <button class="tab-button active" data-tab="generate">Генерация</button>
-                                <button class="tab-button" data-tab="search">Поиск</button>
-                            </div>
-                            <button id="settings-btn" class="settings-button" title="Настройки">⚙️</button>
-                        </div>
-                    </div>
-
-                    <!-- Вкладка генерации -->
-                    <div class="tab-content active" id="tab-generate">
-                        <div class="input-section">
-                            <label for="generation-model-select-main">Модель для генерации:</label>
-                            <select id="generation-model-select-main" class="setting-input" style="margin-bottom: 12px;">
-                                <option value="">Выберите модель...</option>
-                            </select>
-                            <label for="prompt-input">Введите запрос для генерации кода:</label>
-                            <textarea 
-                                id="prompt-input" 
-                                placeholder="Например: Создай функцию для сортировки массива чисел..."
-                                rows="5"
-                            ></textarea>
-                        </div>
-                        <div class="button-section">
-                            <button id="generate-btn" class="generate-button">Сгенерировать код</button>
-                        </div>
-                        <div class="result-section" id="result-section" style="display: none;">
-                            <div class="thinking-section" id="thinking-section" style="display: none;">
-                                <h3 class="thinking-header">
-                                    <button class="collapse-toggle" id="thinking-toggle" title="Свернуть/развернуть">▼</button>
-                                    💭 Размышления модели:
-                                </h3>
-                                <div class="thinking-content-wrapper" id="thinking-content-wrapper">
-                                    <div class="thinking-content" id="thinking-content"></div>
-                                </div>
-                            </div>
-                            <div class="answer-section" id="answer-section" style="display: none;">
-                                <h3 class="answer-header">✅ Итоговый ответ:</h3>
-                                <div class="answer-content-wrapper">
-                                    <button class="copy-icon-button" id="copy-answer-btn" title="Копировать код">📋</button>
-                                    <pre class="answer-content" id="answer-content"></pre>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Вкладка поиска -->
-                    <div class="tab-content" id="tab-search">
-                        <div class="input-section">
-                            <label for="search-query-input">Поиск похожих файлов по запросу:</label>
-                            <textarea 
-                                id="search-query-input" 
-                                placeholder="Например: функция для работы с файлами, обработка ошибок..."
-                                rows="3"
-                            ></textarea>
-                        </div>
-                        <div class="button-section">
-                            <button id="search-btn" class="generate-button">Найти похожие файлы</button>
-                        </div>
-                        <div class="result-section" id="search-result-section" style="display: none;">
-                            <h2>Найденные файлы:</h2>
-                            <div id="search-results-list"></div>
-                        </div>
-                    </div>
-
-                    <!-- Модальное окно настроек -->
-                    <div id="settings-modal" class="modal-overlay" style="display: none;">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h2>Настройки</h2>
-                                <div class="modal-header-actions">
-                                    <button id="reset-settings-btn" class="secondary-button">Сбросить</button>
-                                    <button id="close-settings-btn" class="modal-close-button" title="Закрыть">×</button>
-                                </div>
-                            </div>
-                            <div class="modal-tabs">
-                                <button class="modal-tab-button active" data-settings-tab="general">Общие</button>
-                                <button class="modal-tab-button" data-settings-tab="models">Подключения</button>
-                            </div>
-                            <div class="modal-body">
-                                <!-- Вкладка "Общие" -->
-                                <div class="settings-tab-content active" id="settings-tab-general">
-                                    <h2>Выбор моделей</h2>
-                                    
-                                    <div class="setting-group">
-                                        <label for="generation-model-select">Модель для генерации текста:</label>
-                                        <select id="generation-model-select" class="setting-input">
-                                            <option value="">Выберите модель...</option>
-                                        </select>
-                                        <small class="setting-hint">Модель из активных подключений для генерации кода</small>
-                                    </div>
-
-                                <div style="margin-top: 24px; padding-top: 16px; border-top: 2px solid var(--vscode-panel-border);">
-                                    <h2>Настройки векторизации</h2>
-                                    
-                                    <div class="setting-group">
-                                        <label for="embedder-model-select">Модель эмбеддинга:</label>
-                                        <select id="embedder-model-select" class="setting-input">
-                                            <option value="">Выберите модель...</option>
-                                        </select>
-                                        <small class="setting-hint">Модель из активных подключений для создания векторных представлений текста</small>
-                                    </div>
-                                    
-                                    <div class="setting-group" id="summarize-model-group" style="display: none;">
-                                        <label for="summarize-model-select">Модель для суммаризации:</label>
-                                        <select id="summarize-model-select" class="setting-input">
-                                            <option value="">Выберите модель...</option>
-                                        </select>
-                                        <small class="setting-hint">Модель из активных подключений для суммаризации файлов при векторизации</small>
-                                    </div>
-
-                                    <div class="setting-group">
-                                        <label for="summarize-prompt-input">Промпт для суммаризации:</label>
-                                        <textarea 
-                                            id="summarize-prompt-input" 
-                                            class="setting-input"
-                                            rows="4"
-                                            placeholder="Промпт для суммаризации файлов при векторизации"
-                                        ></textarea>
-                                        <small class="setting-hint">Промпт используется для создания краткого описания содержимого файлов при векторизации</small>
-                                    </div>
-
-                                    <div class="setting-group">
-                                        <label>Типы векторов для создания:</label>
-                                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
-                                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                                <input type="checkbox" id="enable-origin-checkbox" checked>
-                                                <span>Оригинальный текст</span>
-                                                <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(origin)</small>
-                                            </label>
-                                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                                <input type="checkbox" id="enable-summarize-checkbox" checked>
-                                                <span>Суммаризация по оригинальному тексту</span>
-                                                <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(summarize)</small>
-                                            </label>
-                                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                                <input type="checkbox" id="enable-vs-origin-checkbox" checked>
-                                                <span>Сумма векторов по оригинальному тексту вложений</span>
-                                                <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(vs_origin)</small>
-                                            </label>
-                                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                                <input type="checkbox" id="enable-vs-summarize-checkbox" checked>
-                                                <span>Сумма векторов по суммаризации вложений</span>
-                                                <small style="color: var(--vscode-descriptionForeground); font-size: 11px; margin-left: auto;">(vs_summarize)</small>
-                                            </label>
-                                        </div>
-                                        <small class="setting-hint">Выберите типы векторов, которые будут создаваться при векторизации файлов</small>
-                                    </div>
-
-                                    <div class="button-section">
-                                        <button id="vectorize-btn" class="generate-button">Векторизовать все файлы</button>
-                                    </div>
-
-                                </div>
-
-                                <div style="margin-top: 24px; padding-top: 16px; border-top: 2px solid var(--vscode-panel-border);">
-                                    <h2>Хранилище эмбеддингов</h2>
-                                    <div class="setting-group storage-status-group">
-                                        <div class="storage-status-container">
-                                            <div class="storage-status-item">
-                                                <div class="storage-status-label">📊 Записей:</div>
-                                                <div class="storage-status-value" id="storage-count">—</div>
-                                            </div>
-                                            <div class="storage-status-item">
-                                                <div class="storage-status-label">💾 Размер:</div>
-                                                <div class="storage-status-value" id="storage-size">—</div>
-                                            </div>
-                                        </div>
-                                        <div class="storage-actions">
-                                            <button id="refresh-storage-count-btn" class="secondary-button">
-                                                🔄 Обновить
-                                            </button>
-                                            <button id="clear-storage-btn" class="secondary-button danger-button">
-                                                🗑️ Очистить хранилище
-                                            </button>
-                                        </div>
-                                        <p style="color: var(--vscode-descriptionForeground); margin-top: 10px; font-size: 11px; line-height: 1.4;">
-                                            Очистка хранилища удалит все векторизованные данные. 
-                                            После очистки необходимо будет заново выполнить векторизацию файлов.
-                                        </p>
-                                    </div>
-                                </div>
-                                </div>
-
-                                <!-- Вкладка "Подключения" -->
-                                <div class="settings-tab-content" id="settings-tab-models">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                                        <h2 style="margin: 0;">Управление серверами LLM</h2>
-                                        <button id="add-server-btn" class="generate-button" style="margin: 0;">+ Добавить сервер</button>
-                                    </div>
-                                    
-                                    <div id="servers-list" class="servers-list">
-                                        <!-- Серверы будут добавлены динамически -->
-                                    </div>
-                                    
-                                    <!-- Форма создания/редактирования сервера (скрыта по умолчанию) -->
-                                    <div id="server-form-card" class="server-item server-form-card" style="display: none;">
-                                        <div class="server-info" style="flex: 1;">
-                                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                                <input 
-                                                    type="text" 
-                                                    id="server-name-input" 
-                                                    class="setting-input"
-                                                    placeholder="Наименование сервера"
-                                                    style="font-weight: 600; font-size: 13px;"
-                                                />
-                                                <input 
-                                                    type="text" 
-                                                    id="server-url-input" 
-                                                    class="setting-input"
-                                                    placeholder="URL сервера (например: http://localhost:1234/v1)"
-                                                    style="font-size: 11px; font-family: var(--vscode-editor-font-family);"
-                                                />
-                                                <input 
-                                                    type="password" 
-                                                    id="server-api-key-input" 
-                                                    class="setting-input"
-                                                    placeholder="API ключ (опционально)"
-                                                    style="font-size: 11px;"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div class="server-actions">
-                                            <button id="save-server-btn" type="button" class="server-action-btn">Сохранить</button>
-                                            <button id="cancel-server-btn" type="button" class="server-action-btn">Отмена</button>
-                                        </div>
-                                    </div>
-                                    
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- Утилиты -->
-                <script nonce="${nonce}" src="${domUtilsUri}"></script>
-                <script nonce="${nonce}" src="${messageBusUri}"></script>
-                <!-- UI компоненты -->
-                <script nonce="${nonce}" src="${buttonUri}"></script>
-                <script nonce="${nonce}" src="${selectUri}"></script>
-                <script nonce="${nonce}" src="${inputUri}"></script>
-                <script nonce="${nonce}" src="${modalUri}"></script>
-                <script nonce="${nonce}" src="${tabsUri}"></script>
-                <script nonce="${nonce}" src="${statusMessageUri}"></script>
-                <!-- Функциональные компоненты -->
-                <script nonce="${nonce}" src="${codeGenerationUri}"></script>
-                <script nonce="${nonce}" src="${searchUri}"></script>
-                <script nonce="${nonce}" src="${settingsUri}"></script>
-                <script nonce="${nonce}" src="${serverManagementUri}"></script>
-                <!-- Главный скрипт -->
-                <script nonce="${nonce}" src="${mainScriptUri}"></script>
-            </body>
-            </html>`;
+        this._panel.webview.html = getHtmlForWebview(this._panel.webview, this._extensionUri);
     }
 
     /**
@@ -1908,7 +253,6 @@ export class AICoderPanel {
     public dispose() {
         AICoderPanel.currentPanel = undefined;
 
-        // Очистка всех подписок
         while (this._disposables.length) {
             const x = this._disposables.pop();
             if (x) {
@@ -1917,19 +261,3 @@ export class AICoderPanel {
         }
     }
 }
-
-/**
- * Генерация nonce для безопасности
- * Длина nonce берется из настроек
- */
-function getNonce() {
-    const config = vscode.workspace.getConfiguration('aiCoder');
-    const nonceLength = config.get<number>(CONFIG_KEYS.UI.NONCE_LENGTH) ?? 32;
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < nonceLength; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-}
-
