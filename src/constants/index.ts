@@ -77,7 +77,11 @@ export const VECTOR_INDEX = {
 // Имена таблиц и ключей
 export const STORAGE_KEYS = {
     API_KEY: 'aiCoder.apiKey',
-    EXCLUDED_FILES: 'aiCoder.excludedFiles'
+    EXCLUDED_FILES: 'aiCoder.excludedFiles',
+    /** Ключи для сохранения выбранных моделей (формат serverId:modelId) */
+    SELECTED_GENERATION_MODEL: 'aiCoder.selectedGenerationModel',
+    SELECTED_EMBEDDER_MODEL: 'aiCoder.selectedEmbedderModel',
+    SELECTED_SUMMARIZE_MODEL: 'aiCoder.selectedSummarizeModel'
 } as const;
 
 // Имена таблиц

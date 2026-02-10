@@ -69,6 +69,23 @@ class CodeGenerationComponent {
             this.copyAnswerBtn.addEventListener('click', () => this._handleCopyAnswer());
         }
         
+        // Автосохранение выбранной модели генерации при изменении
+        this.modelSelect.onChange(() => {
+            const value = this.modelSelect.getValue();
+            this.messageBus.send('saveSelectedModels', {
+                selections: { generationModel: value }
+            });
+            // Синхронизация с селектом в настройках
+            window.dispatchEvent(new CustomEvent('generationModelChanged', { detail: { value, source: 'main' } }));
+        });
+        
+        // Слушаем изменения модели генерации из настроек
+        window.addEventListener('generationModelChanged', (event) => {
+            if (event.detail.source !== 'main') {
+                this.modelSelect.setValue(event.detail.value);
+            }
+        });
+        
         // Сохранение состояния при изменении текста
         if (this.promptInput.element) {
             this.promptInput.element.addEventListener('input', () => {
@@ -85,6 +102,11 @@ class CodeGenerationComponent {
         this.messageBus.subscribe('activeModelsList', (message) => {
             this.activeModels = message.models || [];
             this._updateModelSelect();
+            
+            // Восстанавливаем сохраненную модель генерации
+            if (message.savedSelections && message.savedSelections.generationModel) {
+                this.modelSelect.setValue(message.savedSelections.generationModel);
+            }
         });
         
         // Начало генерации

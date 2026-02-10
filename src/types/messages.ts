@@ -30,7 +30,9 @@ export type WebviewCommand =
     | 'updateServerModel'
     | 'toggleServerActive'
     | 'toggleModelActive'
-    | 'getActiveModels';
+    | 'getActiveModels'
+    | 'saveSelectedModels'
+    | 'getSelectedModels';
 
 /**
  * Базовое сообщение Webview
@@ -285,6 +287,25 @@ export interface ToggleModelActiveMessage extends BaseWebviewMessage {
 }
 
 /**
+ * Сообщение сохранения выбранных моделей
+ */
+export interface SaveSelectedModelsMessage extends BaseWebviewMessage {
+    command: 'saveSelectedModels';
+    selections: {
+        generationModel?: string;
+        embedderModel?: string;
+        summarizeModel?: string;
+    };
+}
+
+/**
+ * Сообщение получения сохраненных выбранных моделей
+ */
+export interface GetSelectedModelsMessage extends BaseWebviewMessage {
+    command: 'getSelectedModels';
+}
+
+/**
  * Объединенный тип всех сообщений Webview
  */
 export type WebviewMessage = 
@@ -311,5 +332,7 @@ export type WebviewMessage =
     | UpdateServerModelMessage
     | ToggleServerActiveMessage
     | ToggleModelActiveMessage
+    | SaveSelectedModelsMessage
+    | GetSelectedModelsMessage
     | BaseWebviewMessage;
 

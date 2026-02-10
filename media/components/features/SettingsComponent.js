@@ -125,6 +125,27 @@ class SettingsComponent {
                     this.enableSummarizeCheckbox.checked ? 'block' : 'none';
             });
         }
+        
+        // Автосохранение выбранных моделей при изменении
+        this.generationModelSelect.onChange(() => {
+            const value = this.generationModelSelect.getValue();
+            this._saveModelSelection('generationModel', value);
+            // Синхронизация с селектом на главной странице
+            window.dispatchEvent(new CustomEvent('generationModelChanged', { detail: { value, source: 'settings' } }));
+        });
+        
+        // Слушаем изменения модели генерации с главной страницы
+        window.addEventListener('generationModelChanged', (event) => {
+            if (event.detail.source !== 'settings') {
+                this.generationModelSelect.setValue(event.detail.value);
+            }
+        });
+        this.embedderModelSelect.onChange(() => {
+            this._saveModelSelection('embedderModel', this.embedderModelSelect.getValue());
+        });
+        this.summarizeModelSelect.onChange(() => {
+            this._saveModelSelection('summarizeModel', this.summarizeModelSelect.getValue());
+        });
     }
     
     /**
@@ -149,6 +170,11 @@ class SettingsComponent {
         this.messageBus.subscribe('activeModelsList', (message) => {
             this.activeModels = message.models || [];
             this._updateModelSelects();
+            
+            // Восстанавливаем сохраненные выбранные модели
+            if (message.savedSelections) {
+                this._restoreSavedSelections(message.savedSelections);
+            }
         });
         
         // Векторизация
@@ -445,6 +471,33 @@ class SettingsComponent {
             (this.enableVsOriginCheckbox ? this.enableVsOriginCheckbox.checked : true) !== this.originalSettings.enableVsOrigin ||
             (this.enableVsSummarizeCheckbox ? this.enableVsSummarizeCheckbox.checked : true) !== this.originalSettings.enableVsSummarize
         );
+    }
+    
+    /**
+     * Восстановление сохраненных выбранных моделей из бэкенда
+     * @param {Object} selections - объект с ключами generationModel, embedderModel, summarizeModel
+     */
+    _restoreSavedSelections(selections) {
+        if (selections.generationModel) {
+            this.generationModelSelect.setValue(selections.generationModel);
+        }
+        if (selections.embedderModel) {
+            this.embedderModelSelect.setValue(selections.embedderModel);
+        }
+        if (selections.summarizeModel) {
+            this.summarizeModelSelect.setValue(selections.summarizeModel);
+        }
+    }
+    
+    /**
+     * Сохранение выбранной модели на бэкенд (globalState)
+     * @param {string} key - ключ модели (generationModel, embedderModel, summarizeModel)
+     * @param {string} value - значение в формате serverId:modelId
+     */
+    _saveModelSelection(key, value) {
+        const selections = {};
+        selections[key] = value;
+        this.messageBus.send('saveSelectedModels', { selections });
     }
     
     /**

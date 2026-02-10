@@ -5,7 +5,7 @@ import { EmbeddingService } from '../services/embedding/embeddingService';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
 import { WebviewMessage, GenerateMessage, UpdateConfigMessage, CheckLocalServerMessage, SearchMessage, GetAllItemsMessage, OpenFileMessage, ShowNotificationMessage, RequestCloseSettingsMessage, VectorizeAllMessage } from '../types/messages';
-import { CONFIG_KEYS } from '../constants';
+import { CONFIG_KEYS, STORAGE_KEYS } from '../constants';
 import { Logger } from '../utils/logger';
 
 /**
@@ -170,6 +170,13 @@ export class AICoderPanel {
                     case 'toggleModelActive':
                         const toggleModelMsg = message as any;
                         this._handleToggleModelActive(toggleModelMsg.serverId, toggleModelMsg.modelId, toggleModelMsg.active);
+                        return;
+                    case 'saveSelectedModels':
+                        const saveModelsMsg = message as any;
+                        this._handleSaveSelectedModels(saveModelsMsg.selections);
+                        return;
+                    case 'getSelectedModels':
+                        this._handleGetSelectedModels();
                         return;
                 }
             },
@@ -779,15 +786,24 @@ export class AICoderPanel {
                 }
             });
 
+            // Включаем сохраненные выбранные модели в ответ
+            const savedSelections = {
+                generationModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_GENERATION_MODEL) || '',
+                embedderModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_EMBEDDER_MODEL) || '',
+                summarizeModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_SUMMARIZE_MODEL) || ''
+            };
+
             this._panel.webview.postMessage({
                 command: 'activeModelsList',
-                models: activeModels
+                models: activeModels,
+                savedSelections: savedSelections
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
             this._panel.webview.postMessage({
                 command: 'activeModelsList',
-                models: []
+                models: [],
+                savedSelections: { generationModel: '', embedderModel: '', summarizeModel: '' }
             });
         }
     }
@@ -1273,6 +1289,43 @@ export class AICoderPanel {
                 error: errorMessage
             });
         }
+    }
+
+    /**
+     * Сохранение выбранных моделей в globalState
+     * @param selections - объект с ключами generationModel, embedderModel, summarizeModel (формат serverId:modelId)
+     */
+    private async _handleSaveSelectedModels(selections: { generationModel?: string; embedderModel?: string; summarizeModel?: string }) {
+        try {
+            if (selections.generationModel !== undefined) {
+                await this._context.globalState.update(STORAGE_KEYS.SELECTED_GENERATION_MODEL, selections.generationModel);
+            }
+            if (selections.embedderModel !== undefined) {
+                await this._context.globalState.update(STORAGE_KEYS.SELECTED_EMBEDDER_MODEL, selections.embedderModel);
+            }
+            if (selections.summarizeModel !== undefined) {
+                await this._context.globalState.update(STORAGE_KEYS.SELECTED_SUMMARIZE_MODEL, selections.summarizeModel);
+            }
+            Logger.info('Выбранные модели сохранены', selections);
+        } catch (error) {
+            Logger.error('Ошибка сохранения выбранных моделей', error as Error);
+        }
+    }
+
+    /**
+     * Получение сохраненных выбранных моделей из globalState и отправка в webview
+     */
+    private _handleGetSelectedModels() {
+        const selections = {
+            generationModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_GENERATION_MODEL) || '',
+            embedderModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_EMBEDDER_MODEL) || '',
+            summarizeModel: this._context.globalState.get<string>(STORAGE_KEYS.SELECTED_SUMMARIZE_MODEL) || ''
+        };
+
+        this._panel.webview.postMessage({
+            command: 'selectedModels',
+            selections: selections
+        });
     }
 
     /**
