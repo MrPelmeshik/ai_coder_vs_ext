@@ -17,74 +17,62 @@ function getNonce(): string {
 }
 
 /**
+ * Вспомогательная функция для получения URI скрипта/стиля из media/.
+ */
+function getMediaUri(webview: vscode.Webview, extensionUri: vscode.Uri, ...pathSegments: string[]): vscode.Uri {
+    return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', ...pathSegments));
+}
+
+/**
+ * Описание скриптов, подключаемых к webview.
+ * Порядок важен: утилиты -> UI компоненты -> подкомпоненты -> функциональные компоненты -> main.
+ */
+const SCRIPT_PATHS: string[][] = [
+    // Утилиты
+    ['utils', 'domUtils.js'],
+    ['utils', 'MessageBus.js'],
+    // UI компоненты
+    ['components', 'ui', 'Button.js'],
+    ['components', 'ui', 'Select.js'],
+    ['components', 'ui', 'Input.js'],
+    ['components', 'ui', 'Modal.js'],
+    ['components', 'ui', 'Tabs.js'],
+    ['components', 'ui', 'StatusMessage.js'],
+    // Подкомпоненты управления серверами
+    ['components', 'features', 'ServerRenderer.js'],
+    ['components', 'features', 'ModelRenderer.js'],
+    ['components', 'features', 'ModelFormHandler.js'],
+    // Функциональные компоненты
+    ['components', 'features', 'CodeGenerationComponent.js'],
+    ['components', 'features', 'SearchComponent.js'],
+    ['components', 'features', 'VectorizationSettingsComponent.js'],
+    ['components', 'features', 'StorageManagementComponent.js'],
+    ['components', 'features', 'SettingsComponent.js'],
+    ['components', 'features', 'ServerManagementComponent.js'],
+    // Главный скрипт
+    ['main.js'],
+];
+
+/**
+ * Генерация тегов <script> для всех скриптов.
+ */
+function generateScriptTags(webview: vscode.Webview, extensionUri: vscode.Uri, nonce: string): string {
+    return SCRIPT_PATHS
+        .map(segments => {
+            const uri = getMediaUri(webview, extensionUri, ...segments);
+            return `<script nonce="${nonce}" src="${uri}"></script>`;
+        })
+        .join('\n                ');
+}
+
+/**
  * Генерация полного HTML для webview панели.
  * Подключает все стили, утилиты, UI-компоненты и функциональные компоненты.
  */
 export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-    // Получение URI для ресурсов
-    const styleUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'main.css')
-    );
-
-    // URI для утилит
-    const messageBusUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'utils', 'MessageBus.js')
-    );
-    const domUtilsUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'utils', 'domUtils.js')
-    );
-
-    // URI для UI компонентов
-    const buttonUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'ui', 'Button.js')
-    );
-    const selectUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'ui', 'Select.js')
-    );
-    const inputUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'ui', 'Input.js')
-    );
-    const modalUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'ui', 'Modal.js')
-    );
-    const tabsUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'ui', 'Tabs.js')
-    );
-    const statusMessageUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'ui', 'StatusMessage.js')
-    );
-
-    // URI для функциональных компонентов
-    const codeGenerationUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'features', 'CodeGenerationComponent.js')
-    );
-    const searchUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'features', 'SearchComponent.js')
-    );
-    const settingsUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'features', 'SettingsComponent.js')
-    );
-    const serverManagementUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'features', 'ServerManagementComponent.js')
-    );
-
-    // URI для подкомпонентов управления серверами
-    const serverRendererUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'features', 'ServerRenderer.js')
-    );
-    const modelRendererUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'features', 'ModelRenderer.js')
-    );
-    const modelFormHandlerUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'components', 'features', 'ModelFormHandler.js')
-    );
-
-    // Главный скрипт
-    const mainScriptUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUri, 'media', 'main.js')
-    );
-
+    const styleUri = getMediaUri(webview, extensionUri, 'main.css');
     const nonce = getNonce();
+    const scripts = generateScriptTags(webview, extensionUri, nonce);
 
     return `<!DOCTYPE html>
             <html lang="ru">
@@ -332,27 +320,7 @@ export function getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.
                         </div>
                     </div>
                 </div>
-                <!-- Утилиты -->
-                <script nonce="${nonce}" src="${domUtilsUri}"></script>
-                <script nonce="${nonce}" src="${messageBusUri}"></script>
-                <!-- UI компоненты -->
-                <script nonce="${nonce}" src="${buttonUri}"></script>
-                <script nonce="${nonce}" src="${selectUri}"></script>
-                <script nonce="${nonce}" src="${inputUri}"></script>
-                <script nonce="${nonce}" src="${modalUri}"></script>
-                <script nonce="${nonce}" src="${tabsUri}"></script>
-                <script nonce="${nonce}" src="${statusMessageUri}"></script>
-                <!-- Подкомпоненты управления серверами -->
-                <script nonce="${nonce}" src="${serverRendererUri}"></script>
-                <script nonce="${nonce}" src="${modelRendererUri}"></script>
-                <script nonce="${nonce}" src="${modelFormHandlerUri}"></script>
-                <!-- Функциональные компоненты -->
-                <script nonce="${nonce}" src="${codeGenerationUri}"></script>
-                <script nonce="${nonce}" src="${searchUri}"></script>
-                <script nonce="${nonce}" src="${settingsUri}"></script>
-                <script nonce="${nonce}" src="${serverManagementUri}"></script>
-                <!-- Главный скрипт -->
-                <script nonce="${nonce}" src="${mainScriptUri}"></script>
+                ${scripts}
             </body>
             </html>`;
 }

@@ -1,4 +1,4 @@
-import { LLMConfig } from '../llmService';
+import { LLMConfig } from '../../types/llm';
 import { CONFIG_KEYS } from '../../constants';
 import { ApiErrorHandler } from '../../utils/errorHandler';
 import { Logger } from '../../utils/logger';

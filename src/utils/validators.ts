@@ -1,4 +1,4 @@
-import { LLMConfig } from '../services/llmService';
+import { LLMConfig } from '../types/llm';
 import { ConfigError } from '../errors';
 import { ConfigReader } from './configReader';
 import { CONFIG_KEYS } from '../constants';

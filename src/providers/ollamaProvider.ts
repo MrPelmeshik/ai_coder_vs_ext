@@ -1,4 +1,4 @@
-import { LLMProvider, LLMConfig } from '../services/llmService';
+import { LLMProvider, LLMConfig } from '../types/llm';
 import fetch from 'node-fetch';
 import { CONFIG_KEYS } from '../constants';
 import { ApiErrorHandler } from '../utils/errorHandler';

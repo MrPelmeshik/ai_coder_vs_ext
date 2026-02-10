@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { VectorStorage, EmbeddingItem, SearchResult, EmbeddingKind } from '../interfaces/vectorStorage';
 import { Logger } from '../../utils/logger';
 import { StorageError } from '../../errors';
+import { cosineSimilarity, vectorNorm } from '../../utils/vectorMath';
 
 /**
  * Формат данных на диске
@@ -127,7 +128,7 @@ export class FileVectorStorage implements VectorStorage {
         }
 
         const queryVector: number[] = Array.isArray(vector) ? vector : Array.from(vector as number[]);
-        const queryNorm = this._vectorNorm(queryVector);
+        const queryNorm = vectorNorm(queryVector);
 
         if (queryNorm === 0) {
             return [];
@@ -146,7 +147,7 @@ export class FileVectorStorage implements VectorStorage {
                 continue;
             }
 
-            const similarity = this._cosineSimilarity(queryVector, item.vector, queryNorm);
+            const similarity = cosineSimilarity(queryVector, item.vector, queryNorm);
             results.push({ item, similarity });
         }
 
@@ -371,43 +372,6 @@ export class FileVectorStorage implements VectorStorage {
         if (!this.initialized) {
             await this.initialize();
         }
-    }
-
-    /**
-     * Cosine similarity между двумя векторами
-     */
-    private _cosineSimilarity(a: number[], b: number[], aNorm?: number): number {
-        let dotProduct = 0;
-        let normA = 0;
-        let normB = 0;
-
-        for (let i = 0; i < a.length; i++) {
-            dotProduct += a[i] * b[i];
-            if (aNorm === undefined) {
-                normA += a[i] * a[i];
-            }
-            normB += b[i] * b[i];
-        }
-
-        normA = aNorm !== undefined ? aNorm : Math.sqrt(normA);
-        normB = Math.sqrt(normB);
-
-        if (normA === 0 || normB === 0) {
-            return 0;
-        }
-
-        return Math.max(0, dotProduct / (normA * normB));
-    }
-
-    /**
-     * Норма вектора
-     */
-    private _vectorNorm(v: number[]): number {
-        let sum = 0;
-        for (let i = 0; i < v.length; i++) {
-            sum += v[i] * v[i];
-        }
-        return Math.sqrt(sum);
     }
 
     /**

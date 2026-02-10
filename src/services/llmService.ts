@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
 import { OllamaProvider } from '../providers/ollamaProvider';
 import { OpenAiCompatibleProvider } from '../providers/openAiCompatibleProvider';
+import { LLMConfig, LLMProvider } from '../types/llm';
 
 import { STORAGE_KEYS, CONFIG_KEYS, API_TYPES } from '../constants';
 import { ConfigError } from '../errors';
+
+// Реэкспорт типов для обратной совместимости импортов
+export type { LLMConfig, LLMProvider } from '../types/llm';
 
 const API_KEY_SECRET_KEY = STORAGE_KEYS.API_KEY;
 
@@ -114,14 +118,11 @@ export class LLMService {
     }
 
     /**
-     * Загрузка конфигурации из настроек VS Code
-     * Все значения читаются из настроек без дефолтов в коде
+     * Чтение и валидация обязательных полей конфигурации из VS Code Configuration API.
+     * Общая логика для синхронной и асинхронной загрузки.
      */
-    private async _loadConfig(): Promise<LLMConfig> {
+    private _readConfigFields(): Omit<LLMConfig, 'apiKey'> {
         const config = vscode.workspace.getConfiguration('aiCoder');
-        
-        // Загрузка API ключа из SecretStorage
-        const apiKey = await this._getApiKey();
         
         const provider = config.get<string>(CONFIG_KEYS.LLM.PROVIDER);
         if (!provider) {
@@ -160,7 +161,6 @@ export class LLMService {
         
         return {
             provider,
-            apiKey: apiKey || '',
             model,
             embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL),
             temperature,
@@ -174,60 +174,22 @@ export class LLMService {
     }
 
     /**
-     * Синхронная загрузка конфигурации (для совместимости)
-     * Все значения читаются из настроек без дефолтов в коде
+     * Асинхронная загрузка конфигурации из настроек VS Code.
+     * Включает загрузку API ключа из SecretStorage.
+     */
+    private async _loadConfig(): Promise<LLMConfig> {
+        const fields = this._readConfigFields();
+        const apiKey = await this._getApiKey();
+        return { ...fields, apiKey: apiKey || '' };
+    }
+
+    /**
+     * Синхронная загрузка конфигурации (для совместимости).
+     * API ключ будет загружен позже асинхронно.
      */
     private _loadConfigSync(): LLMConfig {
-        const config = vscode.workspace.getConfiguration('aiCoder');
-        
-        const provider = config.get<string>(CONFIG_KEYS.LLM.PROVIDER);
-        if (!provider) {
-            throw new ConfigError('Провайдер LLM не указан в настройках');
-        }
-        
-        const model = config.get<string>(CONFIG_KEYS.LLM.MODEL);
-        if (!model) {
-            throw new ConfigError('Модель LLM не указана в настройках');
-        }
-        
-        const temperature = config.get<number>(CONFIG_KEYS.LLM.TEMPERATURE);
-        if (temperature === undefined || temperature === null) {
-            throw new ConfigError('Температура не задана в настройках');
-        }
-        
-        const maxTokens = config.get<number>(CONFIG_KEYS.LLM.MAX_TOKENS);
-        if (maxTokens === undefined || maxTokens === null) {
-            throw new ConfigError('maxTokens не задан в настройках');
-        }
-        
-        const localUrl = config.get<string>(CONFIG_KEYS.LLM.LOCAL_URL);
-        if (!localUrl) {
-            throw new ConfigError('localUrl не указан в настройках');
-        }
-        
-        const timeout = config.get<number>(CONFIG_KEYS.LLM.TIMEOUT);
-        if (timeout === undefined || timeout === null) {
-            throw new ConfigError('timeout не задан в настройках');
-        }
-        
-        const apiType = config.get<string>(CONFIG_KEYS.LLM.API_TYPE);
-        if (!apiType) {
-            throw new ConfigError('apiType не указан в настройках');
-        }
-        
-        return {
-            provider,
-            apiKey: '', // Будет загружен асинхронно
-            model,
-            embedderModel: config.get<string>(CONFIG_KEYS.LLM.EMBEDDER_MODEL),
-            temperature,
-            maxTokens,
-            baseUrl: config.get<string>(CONFIG_KEYS.LLM.BASE_URL),
-            localUrl,
-            timeout,
-            apiType,
-            systemPrompt: config.get<string>(CONFIG_KEYS.LLM.SYSTEM_PROMPT)
-        };
+        const fields = this._readConfigFields();
+        return { ...fields, apiKey: '' };
     }
 
     /**
@@ -427,29 +389,4 @@ function generatedCode() {
     }
 }
 
-/**
- * Интерфейс конфигурации LLM
- */
-export interface LLMConfig {
-    provider: string;
-    apiKey: string;
-    model: string;
-    embedderModel?: string;
-    temperature: number;
-    maxTokens: number;
-    baseUrl?: string;
-    localUrl?: string;
-    timeout?: number;
-    apiType?: string; // Тип API для кастомного провайдера: 'openai' | 'ollama'
-    systemPrompt?: string; // Системный промпт для LLM
-}
-
-/**
- * Интерфейс для провайдеров LLM
- * Задел на будущее: различные реализации для разных провайдеров
- */
-export interface LLMProvider {
-    generate(prompt: string, config: LLMConfig): Promise<string>;
-    stream?(prompt: string, config: LLMConfig): AsyncIterable<string>;
-}
 

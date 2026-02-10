@@ -21,6 +21,8 @@
   "exclude": [
     "node_modules",
     ".vscode-test",
-    "src/storage/implementations/lanceDbStorage.ts"
+    "src/storage/implementations/lanceDbStorage.ts",
+    "src/storage/utils/lanceDbIndexManager.ts",
+    "src/storage/utils/lanceDbSchema.ts"
   ]
 }
